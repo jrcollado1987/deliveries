@@ -3,7 +3,8 @@
   "private": true,
   "dependencies": {
     "kendo-ui-appbuilder-core": "*",
-    "everlive": "~1.4.1"
+    "everlive": "~1.4.1",
+    "bootstrap": "~3.3.6"
   },
   "devDependencies": {}
 }

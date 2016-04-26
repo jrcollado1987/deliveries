@@ -1,4 +1,67 @@
-(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.Everlive = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function () { if (typeof module === "object") { var everliveModule = module; } if (typeof define !== "undefined" && define.amd) { define(function() { return Everlive; }); } (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+;(function () {
+
+  var object = typeof exports != 'undefined' ? exports : this; // #8: web workers
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+
+  function InvalidCharacterError(message) {
+    this.message = message;
+  }
+  InvalidCharacterError.prototype = new Error;
+  InvalidCharacterError.prototype.name = 'InvalidCharacterError';
+
+  // encoder
+  // [https://gist.github.com/999166] by [https://github.com/nignag]
+  object.btoa || (
+  object.btoa = function (input) {
+    var str = String(input);
+    for (
+      // initialize result and counter
+      var block, charCode, idx = 0, map = chars, output = '';
+      // if the next str index does not exist:
+      //   change the mapping table to "="
+      //   check if d has no fractional digits
+      str.charAt(idx | 0) || (map = '=', idx % 1);
+      // "8 - idx % 1 * 8" generates the sequence 2, 4, 6, 8
+      output += map.charAt(63 & block >> 8 - idx % 1 * 8)
+    ) {
+      charCode = str.charCodeAt(idx += 3/4);
+      if (charCode > 0xFF) {
+        throw new InvalidCharacterError("'btoa' failed: The string to be encoded contains characters outside of the Latin1 range.");
+      }
+      block = block << 8 | charCode;
+    }
+    return output;
+  });
+
+  // decoder
+  // [https://gist.github.com/1020396] by [https://github.com/atk]
+  object.atob || (
+  object.atob = function (input) {
+    var str = String(input).replace(/=+$/, '');
+    if (str.length % 4 == 1) {
+      throw new InvalidCharacterError("'atob' failed: The string to be decoded is not correctly encoded.");
+    }
+    for (
+      // initialize result and counters
+      var bc = 0, bs, buffer, idx = 0, output = '';
+      // get next character
+      buffer = str.charAt(idx++);
+      // character found in table? initialize bit storage and add its ascii value;
+      ~buffer && (bs = bc % 4 ? bs * 64 + buffer : buffer,
+        // and if not first of each 4 characters,
+        // convert the first 8 bits to one ascii character
+        bc++ % 4) ? output += String.fromCharCode(255 & bs >> (-2 * bc & 6)) : 0
+    ) {
+      // try to find character in table (0-63, not found => -1)
+      buffer = chars.indexOf(buffer);
+    }
+    return output;
+  });
+
+}());
+
+},{}],2:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -301,7 +364,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -326,7 +389,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -554,73 +617,38 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-
-},{"_process":4}],4:[function(require,module,exports){
+},{"_process":5}],5:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
 var queue = [];
 var draining = false;
-var currentQueue;
-var queueIndex = -1;
-
-function cleanUpNextTick() {
-    draining = false;
-    if (currentQueue.length) {
-        queue = currentQueue.concat(queue);
-    } else {
-        queueIndex = -1;
-    }
-    if (queue.length) {
-        drainQueue();
-    }
-}
 
 function drainQueue() {
     if (draining) {
         return;
     }
-    var timeout = setTimeout(cleanUpNextTick);
     draining = true;
-
+    var currentQueue;
     var len = queue.length;
     while(len) {
         currentQueue = queue;
         queue = [];
-        while (++queueIndex < len) {
-            if (currentQueue) {
-                currentQueue[queueIndex].run();
-            }
+        var i = -1;
+        while (++i < len) {
+            currentQueue[i]();
         }
-        queueIndex = -1;
         len = queue.length;
     }
-    currentQueue = null;
     draining = false;
-    clearTimeout(timeout);
 }
-
 process.nextTick = function (fun) {
-    var args = new Array(arguments.length - 1);
-    if (arguments.length > 1) {
-        for (var i = 1; i < arguments.length; i++) {
-            args[i - 1] = arguments[i];
-        }
-    }
-    queue.push(new Item(fun, args));
-    if (queue.length === 1 && !draining) {
+    queue.push(fun);
+    if (!draining) {
         setTimeout(drainQueue, 0);
     }
 };
 
-// v8 likes predictible objects
-function Item(fun, array) {
-    this.fun = fun;
-    this.array = array;
-}
-Item.prototype.run = function () {
-    this.fun.apply(null, this.array);
-};
 process.title = 'browser';
 process.browser = true;
 process.env = {};
@@ -642,20 +670,21 @@ process.binding = function (name) {
     throw new Error('process.binding is not supported');
 };
 
+// TODO(shtylman)
 process.cwd = function () { return '/' };
 process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 process.umask = function() { return 0; };
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -1245,528 +1274,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-
-},{"./support/isBuffer":5,"_process":4,"inherits":2}],7:[function(require,module,exports){
-var json = typeof JSON !== 'undefined' ? JSON : require('jsonify');
-
-module.exports = function (obj, opts) {
-    if (!opts) opts = {};
-    if (typeof opts === 'function') opts = { cmp: opts };
-    var space = opts.space || '';
-    if (typeof space === 'number') space = Array(space+1).join(' ');
-    var cycles = (typeof opts.cycles === 'boolean') ? opts.cycles : false;
-    var replacer = opts.replacer || function(key, value) { return value; };
-
-    var cmp = opts.cmp && (function (f) {
-        return function (node) {
-            return function (a, b) {
-                var aobj = { key: a, value: node[a] };
-                var bobj = { key: b, value: node[b] };
-                return f(aobj, bobj);
-            };
-        };
-    })(opts.cmp);
-
-    var seen = [];
-    return (function stringify (parent, key, node, level) {
-        var indent = space ? ('\n' + new Array(level + 1).join(space)) : '';
-        var colonSeparator = space ? ': ' : ':';
-
-        if (node && node.toJSON && typeof node.toJSON === 'function') {
-            node = node.toJSON();
-        }
-
-        node = replacer.call(parent, key, node);
-
-        if (node === undefined) {
-            return;
-        }
-        if (typeof node !== 'object' || node === null) {
-            return json.stringify(node);
-        }
-        if (isArray(node)) {
-            var out = [];
-            for (var i = 0; i < node.length; i++) {
-                var item = stringify(node, i, node[i], level+1) || json.stringify(null);
-                out.push(indent + space + item);
-            }
-            return '[' + out.join(',') + indent + ']';
-        }
-        else {
-            if (seen.indexOf(node) !== -1) {
-                if (cycles) return json.stringify('__cycle__');
-                throw new TypeError('Converting circular structure to JSON');
-            }
-            else seen.push(node);
-
-            var keys = objectKeys(node).sort(cmp && cmp(node));
-            var out = [];
-            for (var i = 0; i < keys.length; i++) {
-                var key = keys[i];
-                var value = stringify(node, key, node[key], level+1);
-
-                if(!value) continue;
-
-                var keyValue = json.stringify(key)
-                    + colonSeparator
-                    + value;
-                ;
-                out.push(indent + space + keyValue);
-            }
-            return '{' + out.join(',') + indent + '}';
-        }
-    })({ '': obj }, '', obj, 0);
-};
-
-var isArray = Array.isArray || function (x) {
-    return {}.toString.call(x) === '[object Array]';
-};
-
-var objectKeys = Object.keys || function (obj) {
-    var has = Object.prototype.hasOwnProperty || function () { return true };
-    var keys = [];
-    for (var key in obj) {
-        if (has.call(obj, key)) keys.push(key);
-    }
-    return keys;
-};
-
-},{"jsonify":8}],8:[function(require,module,exports){
-exports.parse = require('./lib/parse');
-exports.stringify = require('./lib/stringify');
-
-},{"./lib/parse":9,"./lib/stringify":10}],9:[function(require,module,exports){
-var at, // The index of the current character
-    ch, // The current character
-    escapee = {
-        '"':  '"',
-        '\\': '\\',
-        '/':  '/',
-        b:    '\b',
-        f:    '\f',
-        n:    '\n',
-        r:    '\r',
-        t:    '\t'
-    },
-    text,
-
-    error = function (m) {
-        // Call error when something is wrong.
-        throw {
-            name:    'SyntaxError',
-            message: m,
-            at:      at,
-            text:    text
-        };
-    },
-    
-    next = function (c) {
-        // If a c parameter is provided, verify that it matches the current character.
-        if (c && c !== ch) {
-            error("Expected '" + c + "' instead of '" + ch + "'");
-        }
-        
-        // Get the next character. When there are no more characters,
-        // return the empty string.
-        
-        ch = text.charAt(at);
-        at += 1;
-        return ch;
-    },
-    
-    number = function () {
-        // Parse a number value.
-        var number,
-            string = '';
-        
-        if (ch === '-') {
-            string = '-';
-            next('-');
-        }
-        while (ch >= '0' && ch <= '9') {
-            string += ch;
-            next();
-        }
-        if (ch === '.') {
-            string += '.';
-            while (next() && ch >= '0' && ch <= '9') {
-                string += ch;
-            }
-        }
-        if (ch === 'e' || ch === 'E') {
-            string += ch;
-            next();
-            if (ch === '-' || ch === '+') {
-                string += ch;
-                next();
-            }
-            while (ch >= '0' && ch <= '9') {
-                string += ch;
-                next();
-            }
-        }
-        number = +string;
-        if (!isFinite(number)) {
-            error("Bad number");
-        } else {
-            return number;
-        }
-    },
-    
-    string = function () {
-        // Parse a string value.
-        var hex,
-            i,
-            string = '',
-            uffff;
-        
-        // When parsing for string values, we must look for " and \ characters.
-        if (ch === '"') {
-            while (next()) {
-                if (ch === '"') {
-                    next();
-                    return string;
-                } else if (ch === '\\') {
-                    next();
-                    if (ch === 'u') {
-                        uffff = 0;
-                        for (i = 0; i < 4; i += 1) {
-                            hex = parseInt(next(), 16);
-                            if (!isFinite(hex)) {
-                                break;
-                            }
-                            uffff = uffff * 16 + hex;
-                        }
-                        string += String.fromCharCode(uffff);
-                    } else if (typeof escapee[ch] === 'string') {
-                        string += escapee[ch];
-                    } else {
-                        break;
-                    }
-                } else {
-                    string += ch;
-                }
-            }
-        }
-        error("Bad string");
-    },
-
-    white = function () {
-
-// Skip whitespace.
-
-        while (ch && ch <= ' ') {
-            next();
-        }
-    },
-
-    word = function () {
-
-// true, false, or null.
-
-        switch (ch) {
-        case 't':
-            next('t');
-            next('r');
-            next('u');
-            next('e');
-            return true;
-        case 'f':
-            next('f');
-            next('a');
-            next('l');
-            next('s');
-            next('e');
-            return false;
-        case 'n':
-            next('n');
-            next('u');
-            next('l');
-            next('l');
-            return null;
-        }
-        error("Unexpected '" + ch + "'");
-    },
-
-    value,  // Place holder for the value function.
-
-    array = function () {
-
-// Parse an array value.
-
-        var array = [];
-
-        if (ch === '[') {
-            next('[');
-            white();
-            if (ch === ']') {
-                next(']');
-                return array;   // empty array
-            }
-            while (ch) {
-                array.push(value());
-                white();
-                if (ch === ']') {
-                    next(']');
-                    return array;
-                }
-                next(',');
-                white();
-            }
-        }
-        error("Bad array");
-    },
-
-    object = function () {
-
-// Parse an object value.
-
-        var key,
-            object = {};
-
-        if (ch === '{') {
-            next('{');
-            white();
-            if (ch === '}') {
-                next('}');
-                return object;   // empty object
-            }
-            while (ch) {
-                key = string();
-                white();
-                next(':');
-                if (Object.hasOwnProperty.call(object, key)) {
-                    error('Duplicate key "' + key + '"');
-                }
-                object[key] = value();
-                white();
-                if (ch === '}') {
-                    next('}');
-                    return object;
-                }
-                next(',');
-                white();
-            }
-        }
-        error("Bad object");
-    };
-
-value = function () {
-
-// Parse a JSON value. It could be an object, an array, a string, a number,
-// or a word.
-
-    white();
-    switch (ch) {
-    case '{':
-        return object();
-    case '[':
-        return array();
-    case '"':
-        return string();
-    case '-':
-        return number();
-    default:
-        return ch >= '0' && ch <= '9' ? number() : word();
-    }
-};
-
-// Return the json_parse function. It will have access to all of the above
-// functions and variables.
-
-module.exports = function (source, reviver) {
-    var result;
-    
-    text = source;
-    at = 0;
-    ch = ' ';
-    result = value();
-    white();
-    if (ch) {
-        error("Syntax error");
-    }
-
-    // If there is a reviver function, we recursively walk the new structure,
-    // passing each name/value pair to the reviver function for possible
-    // transformation, starting with a temporary root object that holds the result
-    // in an empty key. If there is not a reviver function, we simply return the
-    // result.
-
-    return typeof reviver === 'function' ? (function walk(holder, key) {
-        var k, v, value = holder[key];
-        if (value && typeof value === 'object') {
-            for (k in value) {
-                if (Object.prototype.hasOwnProperty.call(value, k)) {
-                    v = walk(value, k);
-                    if (v !== undefined) {
-                        value[k] = v;
-                    } else {
-                        delete value[k];
-                    }
-                }
-            }
-        }
-        return reviver.call(holder, key, value);
-    }({'': result}, '')) : result;
-};
-
-},{}],10:[function(require,module,exports){
-var cx = /[\u0000\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-    escapable = /[\\\"\x00-\x1f\x7f-\x9f\u00ad\u0600-\u0604\u070f\u17b4\u17b5\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufeff\ufff0-\uffff]/g,
-    gap,
-    indent,
-    meta = {    // table of character substitutions
-        '\b': '\\b',
-        '\t': '\\t',
-        '\n': '\\n',
-        '\f': '\\f',
-        '\r': '\\r',
-        '"' : '\\"',
-        '\\': '\\\\'
-    },
-    rep;
-
-function quote(string) {
-    // If the string contains no control characters, no quote characters, and no
-    // backslash characters, then we can safely slap some quotes around it.
-    // Otherwise we must also replace the offending characters with safe escape
-    // sequences.
-    
-    escapable.lastIndex = 0;
-    return escapable.test(string) ? '"' + string.replace(escapable, function (a) {
-        var c = meta[a];
-        return typeof c === 'string' ? c :
-            '\\u' + ('0000' + a.charCodeAt(0).toString(16)).slice(-4);
-    }) + '"' : '"' + string + '"';
-}
-
-function str(key, holder) {
-    // Produce a string from holder[key].
-    var i,          // The loop counter.
-        k,          // The member key.
-        v,          // The member value.
-        length,
-        mind = gap,
-        partial,
-        value = holder[key];
-    
-    // If the value has a toJSON method, call it to obtain a replacement value.
-    if (value && typeof value === 'object' &&
-            typeof value.toJSON === 'function') {
-        value = value.toJSON(key);
-    }
-    
-    // If we were called with a replacer function, then call the replacer to
-    // obtain a replacement value.
-    if (typeof rep === 'function') {
-        value = rep.call(holder, key, value);
-    }
-    
-    // What happens next depends on the value's type.
-    switch (typeof value) {
-        case 'string':
-            return quote(value);
-        
-        case 'number':
-            // JSON numbers must be finite. Encode non-finite numbers as null.
-            return isFinite(value) ? String(value) : 'null';
-        
-        case 'boolean':
-        case 'null':
-            // If the value is a boolean or null, convert it to a string. Note:
-            // typeof null does not produce 'null'. The case is included here in
-            // the remote chance that this gets fixed someday.
-            return String(value);
-            
-        case 'object':
-            if (!value) return 'null';
-            gap += indent;
-            partial = [];
-            
-            // Array.isArray
-            if (Object.prototype.toString.apply(value) === '[object Array]') {
-                length = value.length;
-                for (i = 0; i < length; i += 1) {
-                    partial[i] = str(i, value) || 'null';
-                }
-                
-                // Join all of the elements together, separated with commas, and
-                // wrap them in brackets.
-                v = partial.length === 0 ? '[]' : gap ?
-                    '[\n' + gap + partial.join(',\n' + gap) + '\n' + mind + ']' :
-                    '[' + partial.join(',') + ']';
-                gap = mind;
-                return v;
-            }
-            
-            // If the replacer is an array, use it to select the members to be
-            // stringified.
-            if (rep && typeof rep === 'object') {
-                length = rep.length;
-                for (i = 0; i < length; i += 1) {
-                    k = rep[i];
-                    if (typeof k === 'string') {
-                        v = str(k, value);
-                        if (v) {
-                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                        }
-                    }
-                }
-            }
-            else {
-                // Otherwise, iterate through all of the keys in the object.
-                for (k in value) {
-                    if (Object.prototype.hasOwnProperty.call(value, k)) {
-                        v = str(k, value);
-                        if (v) {
-                            partial.push(quote(k) + (gap ? ': ' : ':') + v);
-                        }
-                    }
-                }
-            }
-            
-        // Join all of the member texts together, separated with commas,
-        // and wrap them in braces.
-
-        v = partial.length === 0 ? '{}' : gap ?
-            '{\n' + gap + partial.join(',\n' + gap) + '\n' + mind + '}' :
-            '{' + partial.join(',') + '}';
-        gap = mind;
-        return v;
-    }
-}
-
-module.exports = function (value, replacer, space) {
-    var i;
-    gap = '';
-    indent = '';
-    
-    // If the space parameter is a number, make an indent string containing that
-    // many spaces.
-    if (typeof space === 'number') {
-        for (i = 0; i < space; i += 1) {
-            indent += ' ';
-        }
-    }
-    // If the space parameter is a string, it will be used as the indent string.
-    else if (typeof space === 'string') {
-        indent = space;
-    }
-
-    // If there is a replacer, it must be a function or an array.
-    // Otherwise, throw an error.
-    rep = replacer;
-    if (replacer && typeof replacer !== 'function'
-    && (typeof replacer !== 'object' || typeof replacer.length !== 'number')) {
-        throw new Error('JSON.stringify');
-    }
-    
-    // Make a fake root object containing our value under the key of ''.
-    // Return the result of stringifying the value.
-    return str('', {'': value});
-};
-
-},{}],11:[function(require,module,exports){
+},{"./support/isBuffer":6,"_process":5,"inherits":3}],8:[function(require,module,exports){
 /**
  * This script gives you the zone info key representing your device's time zone setting.
  *
@@ -2127,7 +1635,7 @@ module.exports = function (value, replacer, space) {
 })(this);
 
 
-},{}],12:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 // Mingo.js 0.4.0
 // Copyright (c) 2015 Francis Asante <kofrasa@gmail.com>
 // MIT
@@ -4026,7 +3534,7 @@ module.exports = function (value, replacer, space) {
 
 }(this));
 
-},{"stream":"stream","underscore":35,"util":6}],13:[function(require,module,exports){
+},{"stream":"stream","underscore":32,"util":7}],10:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -4170,7 +3678,7 @@ function compare(matcher, val){
   }
 }
 
-},{"./ops":24,"component-type":16,"debug":17,"dot-component":20,"mongo-eql":22,"object-component":23}],14:[function(require,module,exports){
+},{"./ops":21,"component-type":13,"debug":14,"dot-component":17,"mongo-eql":19,"object-component":20}],11:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -4286,7 +3794,7 @@ function query(obj, query, update, opts){
   return log;
 }
 
-},{"./filter":13,"./mods":15,"component-type":16,"debug":17,"dot-component":20,"object-component":23}],15:[function(require,module,exports){
+},{"./filter":10,"./mods":12,"component-type":13,"debug":14,"dot-component":17,"object-component":20}],12:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -4903,7 +4411,7 @@ function numeric(val){
   return 'number' == type(val) || Number(val) == val;
 }
 
-},{"component-type":16,"debug":17,"dot-component":20,"mongo-eql":22,"object-component":23}],16:[function(require,module,exports){
+},{"component-type":13,"debug":14,"dot-component":17,"mongo-eql":19,"object-component":20}],13:[function(require,module,exports){
 /**
  * toString ref.
  */
@@ -4939,7 +4447,7 @@ module.exports = function(val){
   return typeof val;
 };
 
-},{}],17:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 
 /**
  * This is the web browser implementation of `debug()`.
@@ -4953,10 +4461,17 @@ exports.formatArgs = formatArgs;
 exports.save = save;
 exports.load = load;
 exports.useColors = useColors;
-exports.storage = 'undefined' != typeof chrome
-               && 'undefined' != typeof chrome.storage
-                  ? chrome.storage.local
-                  : localstorage();
+
+/**
+ * Use chrome.storage.local if we are in an app
+ */
+
+var storage;
+
+if (typeof chrome !== 'undefined' && typeof chrome.storage !== 'undefined')
+  storage = chrome.storage.local;
+else
+  storage = localstorage();
 
 /**
  * Colors.
@@ -5064,9 +4579,9 @@ function log() {
 function save(namespaces) {
   try {
     if (null == namespaces) {
-      exports.storage.removeItem('debug');
+      storage.removeItem('debug');
     } else {
-      exports.storage.debug = namespaces;
+      storage.debug = namespaces;
     }
   } catch(e) {}
 }
@@ -5081,7 +4596,7 @@ function save(namespaces) {
 function load() {
   var r;
   try {
-    r = exports.storage.debug;
+    r = storage.debug;
   } catch(e) {}
   return r;
 }
@@ -5109,7 +4624,7 @@ function localstorage(){
   } catch (e) {}
 }
 
-},{"./debug":18}],18:[function(require,module,exports){
+},{"./debug":15}],15:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -5308,7 +4823,7 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":19}],19:[function(require,module,exports){
+},{"ms":16}],16:[function(require,module,exports){
 /**
  * Helpers.
  */
@@ -5349,8 +4864,6 @@ module.exports = function(val, options){
  */
 
 function parse(str) {
-  str = '' + str;
-  if (str.length > 10000) return;
   var match = /^((?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|years?|yrs?|y)?$/i.exec(str);
   if (!match) return;
   var n = parseFloat(match[1]);
@@ -5435,7 +4948,7 @@ function plural(ms, n, name) {
   return Math.ceil(ms / n) + ' ' + name + 's';
 }
 
-},{}],20:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -5519,7 +5032,7 @@ function parent(obj, key, init){
   }
 }
 
-},{"type-component":21}],21:[function(require,module,exports){
+},{"type-component":18}],18:[function(require,module,exports){
 
 /**
  * toString ref.
@@ -5551,7 +5064,7 @@ module.exports = function(val){
   return typeof val;
 };
 
-},{}],22:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -5622,7 +5135,7 @@ function eql(matcher, val){
   }
 }
 
-},{"component-type":16}],23:[function(require,module,exports){
+},{"component-type":13}],20:[function(require,module,exports){
 
 /**
  * HOP ref.
@@ -5707,7 +5220,7 @@ exports.length = function(obj){
 exports.isEmpty = function(obj){
   return 0 == exports.length(obj);
 };
-},{}],24:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -5806,7 +5319,7 @@ exports.$size = function(matcher, val){
   return Array.isArray(val) && matcher == val.length;
 };
 
-},{"component-type":16,"mongo-eql":22}],25:[function(require,module,exports){
+},{"component-type":13,"mongo-eql":19}],22:[function(require,module,exports){
 var CryptoJS = require('./lib/core').CryptoJS;
 require('./lib/enc-base64');
 require('./lib/md5');
@@ -5817,7 +5330,7 @@ var JsonFormatter = require('./lib/jsonformatter').JsonFormatter;
 
 exports.CryptoJS = CryptoJS;
 exports.JsonFormatter = JsonFormatter;
-},{"./lib/aes":26,"./lib/cipher-core":27,"./lib/core":28,"./lib/enc-base64":29,"./lib/evpkdf":30,"./lib/jsonformatter":31,"./lib/md5":32}],26:[function(require,module,exports){
+},{"./lib/aes":23,"./lib/cipher-core":24,"./lib/core":25,"./lib/enc-base64":26,"./lib/evpkdf":27,"./lib/jsonformatter":28,"./lib/md5":29}],23:[function(require,module,exports){
 var CryptoJS = require('./core').CryptoJS;
 
 /*
@@ -6034,7 +5547,7 @@ code.google.com/p/crypto-js/wiki/License
     C.AES = BlockCipher._createHelper(AES);
 }());
 
-},{"./core":28}],27:[function(require,module,exports){
+},{"./core":25}],24:[function(require,module,exports){
 var CryptoJS = require('./core').CryptoJS;
 
 /*
@@ -6901,7 +6414,7 @@ CryptoJS.lib.Cipher || (function (undefined) {
     });
 }());
 
-},{"./core":28}],28:[function(require,module,exports){
+},{"./core":25}],25:[function(require,module,exports){
 /*
 CryptoJS v3.1.2
 code.google.com/p/crypto-js
@@ -7617,7 +7130,7 @@ var CryptoJS = CryptoJS || (function (Math, undefined) {
 
 exports.CryptoJS = CryptoJS;
 
-},{}],29:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 var CryptoJS = require('./core').CryptoJS;
 
 /*
@@ -7730,7 +7243,7 @@ code.google.com/p/crypto-js/wiki/License
     };
 }());
 
-},{"./core":28}],30:[function(require,module,exports){
+},{"./core":25}],27:[function(require,module,exports){
 var CryptoJS = require('./core').CryptoJS;
 
 /*
@@ -7852,7 +7365,7 @@ code.google.com/p/crypto-js/wiki/License
     };
 }());
 
-},{"./core":28}],31:[function(require,module,exports){
+},{"./core":25}],28:[function(require,module,exports){
 var CryptoJS = require('./core').CryptoJS;
 
 // create custom json serialization format
@@ -7899,7 +7412,7 @@ var JsonFormatter = {
 };
 
 exports.JsonFormatter = JsonFormatter;
-},{"./core":28}],32:[function(require,module,exports){
+},{"./core":25}],29:[function(require,module,exports){
 var CryptoJS = require('./core').CryptoJS;
 
 /*
@@ -8157,7 +7670,7 @@ code.google.com/p/crypto-js/wiki/License
     C.HmacMD5 = Hasher._createHmacHelper(MD5);
 }(Math));
 
-},{"./core":28}],33:[function(require,module,exports){
+},{"./core":25}],30:[function(require,module,exports){
 /*!
   * Reqwest! A general purpose XHR connection manager
   * license MIT (c) Dustin Diaz 2014
@@ -8774,14 +8287,14 @@ code.google.com/p/crypto-js/wiki/License
   return reqwest
 });
 
-},{}],34:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 (function (process){
 /*!
  * @overview RSVP - a tiny implementation of Promises/A+.
  * @copyright Copyright (c) 2014 Yehuda Katz, Tom Dale, Stefan Penner and contributors
  * @license   Licensed under MIT license
  *            See https://raw.githubusercontent.com/tildeio/rsvp.js/master/LICENSE
- * @version   3.0.17
+ * @version   3.0.18
  */
 
 (function() {
@@ -10167,7 +9680,7 @@ code.google.com/p/crypto-js/wiki/License
       var results = [];
 
       for (var key in input) {
-        if (promise._state === lib$rsvp$$internal$$PENDING && input.hasOwnProperty(key)) {
+        if (promise._state === lib$rsvp$$internal$$PENDING && Object.prototype.hasOwnProperty.call(input, key)) {
           results.push({
             position: key,
             entry: input[key]
@@ -10449,8 +9962,7 @@ code.google.com/p/crypto-js/wiki/License
 
 
 }).call(this,require('_process'))
-
-},{"_process":4}],35:[function(require,module,exports){
+},{"_process":5}],32:[function(require,module,exports){
 //     Underscore.js 1.8.2
 //     http://underscorejs.org
 //     (c) 2009-2015 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
@@ -11988,7 +11500,7 @@ code.google.com/p/crypto-js/wiki/License
   }
 }.call(this));
 
-},{}],36:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 'use strict';
 var Constants = {};
 Constants.DefaultTakeItemsCount = 50;
@@ -12005,7 +11517,7 @@ Constants.IdFieldNameClient = 'Id';
 Constants.TargetTypeNameFieldName = 'TargetTypeName';
 
 module.exports = Constants;
-},{}],37:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 'use strict';
 var Constants = require('./Constants');
 
@@ -12281,7 +11793,7 @@ ExecutionTree.prototype.getRelationFieldValues = function (relation, includeArra
 
 module.exports = ExecutionTree;
 
-},{"./Constants":36}],38:[function(require,module,exports){
+},{"./Constants":33}],35:[function(require,module,exports){
 'use strict';
 function ExpandError(message) {
     this.name = 'ExpandError';
@@ -12290,7 +11802,7 @@ function ExpandError(message) {
 }
 ExpandError.prototype = new Error;
 module.exports = ExpandError;
-},{}],39:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 'use strict';
 var async = require('async');
 var RelationTreeBuilder = require('./RelationTreeBuilder');
@@ -12594,7 +12106,7 @@ Processor.Constants = Constants;
 
 module.exports = Processor;
 
-},{"./Constants":36,"./ExecutionTree":37,"./ExpandError":38,"./RelationTreeBuilder":41,"async":42}],40:[function(require,module,exports){
+},{"./Constants":33,"./ExecutionTree":34,"./ExpandError":35,"./RelationTreeBuilder":38,"async":39}],37:[function(require,module,exports){
 'use strict';
 var Constants = require('./Constants');
 var _ = require('underscore');
@@ -12663,7 +12175,7 @@ RelationNode.prototype.isArray = function () {
 
 module.exports = RelationNode;
 
-},{"./Constants":36,"./ExpandError":38,"underscore":43}],41:[function(require,module,exports){
+},{"./Constants":33,"./ExpandError":35,"underscore":40}],38:[function(require,module,exports){
 'use strict';
 var RelationNode = require('./RelationNode');
 var _ = require('underscore');
@@ -13067,7 +12579,7 @@ RelationTreeBuilder.getIsFieldsExpressionExclusive = function (fieldsExpression)
 
 module.exports = RelationTreeBuilder;
 
-},{"./Constants":36,"./ExpandError":38,"./RelationNode":40,"async":42,"underscore":43}],42:[function(require,module,exports){
+},{"./Constants":33,"./ExpandError":35,"./RelationNode":37,"async":39,"underscore":40}],39:[function(require,module,exports){
 (function (process){
 /*!
  * async
@@ -14194,85 +13706,626 @@ module.exports = RelationTreeBuilder;
 }());
 
 }).call(this,require('_process'))
-
-},{"_process":4}],43:[function(require,module,exports){
-arguments[4][35][0].apply(exports,arguments)
-},{"dup":35}],44:[function(require,module,exports){
+},{"_process":5}],40:[function(require,module,exports){
+arguments[4][32][0].apply(exports,arguments)
+},{"dup":32}],41:[function(require,module,exports){
+var buildPromise = require('./utils').buildPromise;
 var EverliveError = require('./EverliveError').EverliveError;
-var constants = require('./constants');
-var _ = require('underscore');
+var Platform = require('./constants').Platform;
+var common = require('./common');
+var jstz = common.jstz;
+var _ = common._;
 
 module.exports = (function () {
+    /**
+     * @class CurrentDevice
+     * @deprecated
+     * @protected
+     * @param pushHandler
+     * @constructor
+     */
+    var CurrentDevice = function (pushHandler) {
+        this._pushHandler = pushHandler;
+        this._initSuccessCallback = null;
+        this._initErrorCallback = null;
 
-    function AutoQueue(maxConcurrentTasks) {
-        maxConcurrentTasks = parseInt(maxConcurrentTasks || constants.MaxConcurrentDownloadTasks);
+        //Suffix for the global callback functions
+        this._globalFunctionSuffix = null;
 
-        if (isNaN(maxConcurrentTasks) || maxConcurrentTasks <= 0) {
-            throw new EverliveError('The maxConcurrentTasks must be a number larger than 0');
-        }
+        this.pushSettings = null;
+        this.pushToken = null;
+        this.isInitialized = false;
+        this.isInitializing = false;
 
-        this.maxConcurrentTasks = maxConcurrentTasks;
-        this.runningTasksCount = 0;
-        this.tasks = [];
-    }
+        this.emulatorMode = false;
+    };
 
-    AutoQueue.prototype = {
+    CurrentDevice.prototype = {
+
         /**
-         * @param {Function} task
-         * @param {Function} taskSuccess
-         * @param {Function} taskError
+         * Initializes the current device for push notifications. This method requests a push token from the device vendor and enables the push notification functionality on the device. Once this is done, you can register the device in {{site.TelerikBackendServices}} using the register() method.
+         * @method enableNotifications
+         * @name enableNotifications
+         * @memberOf CurrentDevice.prototype
+         * @param {PushSettings} pushSettings An object specifying various settings for the initialization.
+         * @returns {Object} The promise for the request.
          */
-        enqueue: function (task, taskSuccess, taskError) {
-            if (!_.isFunction(taskSuccess) || !_.isFunction(taskError)) {
-                throw new EverliveError('taskSuccess and taskError functions must be provided');
-            }
+        /**
+         * Initializes the current device for push notifications. This method requests a push token from the device vendor and enables the push notification functionality on the device. Once this is done, you can register the device in Everlive using the register() method.
+         * @method enableNotifications
+         * @name enableNotifications
+         * @memberOf CurrentDevice.prototype
+         * @param {PushSettings} pushSettings An object specifying various settings for the initialization.
+         * @param {Function} [success] Callback to invoke on success.
+         * @param {Function} [error] Callback to invoke on error.
+         */
+        enableNotifications: function (pushSettings, success, error) {
+            this.pushSettings = this._cleanPlatformsPushSettings(pushSettings);
 
-            var args = [].splice.call(arguments, 3);
-
-            this.tasks.push({
-                task: task,
-                args: args,
-                success: taskSuccess,
-                error: taskError
-            });
-
-            this._runNext();
+            return buildPromise(_.bind(this._initialize, this), success, error);
         },
 
-        _runNext: function () {
+        /**
+         * Disables push notifications for the current device. This method invalidates any push tokens that were obtained for the device from the current application.
+         * @method disableNotifications
+         * @name disableNotifications
+         * @memberOf CurrentDevice.prototype
+         * @returns {Object} The promise for the request.
+         */
+        /**
+         * Disables push notifications for the current device. This method invalidates any push tokens that were obtained for the device from the current application.
+         * @method disableNotifications
+         * @name disableNotifications
+         * @memberOf CurrentDevice.prototype
+         * @param {Function} [success] Callback to invoke on success.
+         * @param {Function} [error] Callback to invoke on error.
+         */
+        disableNotifications: function (success, error) {
             var self = this;
 
-            if (self.runningTasksCount === self.maxConcurrentTasks || !self.tasks.length) {
+            return this.unregister().then(
+                function () {
+                    return buildPromise(
+                        function (success, error) {
+                            if (self.emulatorMode) {
+                                success();
+                            } else {
+                                var pushNotification = window.plugins.pushNotification;
+                                var unregisterOptions;
+                                var platformType = self._getPlatformType(device.platform);
+                                if (platformType === Platform.WindowsPhone) {
+                                    unregisterOptions = {'channelName': self.pushSettings.wp8.channelName};
+                                }
+                                pushNotification.unregister(
+                                    function () {
+                                        self.isInitialized = false;
+                                        success();
+                                    },
+                                    error,
+                                    unregisterOptions
+                                );
+                            }
+                        },
+                        success,
+                        error
+                    );
+                },
+                error
+            );
+        },
+
+        /**
+         * Returns the push registration for the current device.
+         * @memberOf CurrentDevice.prototype
+         * @method getRegistration
+         * @name getRegistration
+         * @returns {Object} The promise for the request.
+         */
+        /**
+         * Returns the push registration for the current device.
+         * @memberOf CurrentDevice.prototype
+         * @method getRegistration
+         * @name getRegistration
+         * @param {Function} success Callback to invoke on success.
+         * @param {Function} error Callback to invoke on error.
+         */
+        getRegistration: function (success, error) {
+            var deviceId = encodeURIComponent(this._getDeviceId());
+            return this._pushHandler.devices.getById('HardwareId/' + deviceId, success, error);
+        },
+
+        /**
+         * Registers the current device for push notifications in {{site.TelerikBackendServices}}. This method can be called only after [enableNotifications()]{@link currentDevice.enableNotifications} has completed successfully.
+         * @memberOf CurrentDevice.prototype
+         * @method register
+         * @name register
+         * @param {Object} customParameters Custom parameters for the registration.
+         * @returns {Object} The promise for the request.
+         */
+        /**
+         * Registers the current device for push notifications in {{site.TelerikBackendServices}}. This method can be called only after [enableNotifications()]{@link currentDevice.enableNotifications} has completed successfully.
+         * @memberOf CurrentDevice.prototype
+         * @method register
+         * @name register
+         * @param {Object} customParameters Custom parameters for the registration.
+         * @param {Function} [success] Callback to invoke on success.
+         * @param {Function} [error] Callback to invoke on error.
+         */
+        register: function (customParameters, success, error) {
+            var self = this;
+
+            var deviceRegistration = {};
+            if (customParameters !== undefined) {
+                deviceRegistration.Parameters = customParameters;
+            }
+
+            return this._populateRegistrationObject(deviceRegistration).then(
+                function () {
+                    return self._pushHandler.devices.create(deviceRegistration, success, error);
+                },
+                error
+            );
+        },
+
+        /**
+         * Unregisters the current device from push notifications in {{site.TelerikBackendServices}}. After this call completes successfully, {{site.bs}} will no longer send notifications to this device. Note that this does not prevent the device from receiving notifications and does not invalidate push tokens.
+         * @memberOf CurrentDevice.prototype
+         * @method unregister
+         * @name unregister
+         * @returns {Object} The promise for the request.
+         */
+        /**
+         * Unregisters the current device from push notifications in {{site.TelerikBackendServices}}. After this call completes successfully, {{site.bs}} will no longer send notifications to this device. Note that this does not prevent the device from receiving notifications and does not invalidate push tokens.
+         * @memberOf CurrentDevice.prototype
+         * @method unregister
+         * @name unregister
+         * @param {Function} [success] Callback to invoke on success.
+         * @param {Function} [error] Callback to invoke on error.
+         */
+        unregister: function (success, error) {
+            var deviceId = encodeURIComponent(device.uuid);
+            return this._pushHandler.devices.destroySingle({Id: 'HardwareId/' + deviceId}, success, error);
+        },
+
+        /**
+         * Updates the registration of the current device.
+         * @memberOf CurrentDevice.prototype
+         * @method updateRegistration
+         * @name updateRegistration
+         * @param {Object} customParameters Custom parameters for the registration. If undefined, customParameters are not updated.
+         * @returns {Object} The promise for the request.
+         */
+        /**
+         * Updates the registration for the current device.
+         * @memberOf CurrentDevice.prototype
+         * @method updateRegistration
+         * @name updateRegistration
+         * @param {Object} customParameters Custom parameters for the registration. If undefined, customParameters are not updated.
+         * @param {Function} [success] Callback to invoke on success.
+         * @param {Function} [error] Callback to invoke on error.
+         */
+        updateRegistration: function (customParameters, success, error) {
+            var self = this;
+
+            var deviceRegistration = {};
+            if (customParameters !== undefined) {
+                deviceRegistration.Parameters = customParameters;
+            }
+
+            return this._populateRegistrationObject(deviceRegistration).then(
+                function () {
+                    deviceRegistration.Id = 'HardwareId/' + encodeURIComponent(deviceRegistration.HardwareId);
+                    return self._pushHandler.devices.updateSingle(deviceRegistration, success, error);
+                },
+                error
+            );
+        },
+
+        _initializeInteractivePush: function (iOSSettings, success, error) {
+            var pushPlugin = window.plugins.pushNotification;
+
+            var interactiveSettings = iOSSettings.interactiveSettings;
+            var notificationTypes = [];
+            if (iOSSettings.alert) {
+                notificationTypes.push(pushPlugin.UserNotificationTypes.Alert);
+            }
+            if (iOSSettings.badge) {
+                notificationTypes.push(pushPlugin.UserNotificationTypes.Badge);
+            }
+            if (iOSSettings.sound) {
+                notificationTypes.push(pushPlugin.UserNotificationTypes.Sound);
+            }
+
+            var getAction = function (actionIdentifier) {
+                var action = _.find(interactiveSettings.actions, function (action) {
+                    return action.identifier === actionIdentifier;
+                });
+
+                return action;
+            };
+            var categories = _.map(interactiveSettings.categories, function (category) {
+                return {
+                    identifier: category.identifier,
+                    actionsForDefaultContext: _.map(category.actionsForDefaultContext, getAction),
+                    actionsForMinimalContext: _.map(category.actionsForMinimalContext, getAction)
+                }
+            });
+
+            pushPlugin.registerUserNotificationSettings(
+                // the success callback which will immediately return (APNs is not contacted for this)
+                success,
+                // called in case the configuration is incorrect
+                error, {
+                    // asking permission for these features
+                    types: notificationTypes,
+                    // register these categories
+                    categories: categories
+                }
+            );
+        },
+
+        //Initializes the push functionality on the device.
+        _initialize: function (success, error) {
+            var self = this;
+
+            if (this.isInitializing) {
+                error(new EverliveError('Push notifications are currently initializing.'));
                 return;
             }
 
-            self.runningTasksCount++;
+            if (!this.emulatorMode && (!window.navigator || !window.navigator.globalization)) {
+                error(new EverliveError('The globalization plugin is not initialized.'));
+                return;
+            }
 
-            var nextTask = this.tasks.shift();
-            var task = nextTask.task;
-            var args = nextTask.args;
-            var taskSuccess = nextTask.success;
-            var taskError = nextTask.error;
+            if (!this.emulatorMode && (!window.plugins || !window.plugins.pushNotification)) {
+                error(new EverliveError('The push notifications plugin is not initialized.'));
+                return;
+            }
 
-            args.unshift(function executedCallback(err) {
-                self.runningTasksCount--;
+            this._initSuccessCallback = success;
+            this._initErrorCallback = error;
 
-                if (err) {
-                    taskError(err);
-                } else {
-                    taskSuccess.apply(null, [].splice.call(arguments, 1));
+            if (this.isInitialized) {
+                this._deviceRegistrationSuccess(this.pushToken);
+                return;
+            }
+
+            if (this.emulatorMode) {
+                setTimeout(
+                    function () {
+                        self._deviceRegistrationSuccess('fake_push_token');
+                    },
+                    1000
+                );
+                return;
+            }
+
+            this.isInitializing = true;
+
+            var suffix = this._globalFunctionSuffix;
+            if (!suffix) {
+                suffix = Date.now().toString();
+                this._globalFunctionSuffix = suffix;
+            }
+
+            var pushNotification = window.plugins.pushNotification;
+
+            var platformType = this._getPlatformType(device.platform);
+            if (platformType === Platform.iOS) {
+                //Initialize global APN callback
+                var apnCallbackName = 'apnCallback_' + suffix;
+                Everlive.PushCallbacks[apnCallbackName] = _.bind(this._onNotificationAPN, this);
+
+                //Construct registration options object and validate iOS settings
+                var apnRegistrationOptions = this.pushSettings.iOS;
+                this._validateIOSSettings(apnRegistrationOptions);
+                apnRegistrationOptions.ecb = 'Everlive.PushCallbacks.' + apnCallbackName;
+
+                //Register for APN
+                pushNotification.register(
+                    _.bind(this._successfulRegistrationAPN, this),
+                    _.bind(this._failedRegistrationAPN, this),
+                    apnRegistrationOptions
+                );
+            } else if (platformType === Platform.Android) {
+                //Initialize global GCM callback
+                var gcmCallbackName = 'gcmCallback_' + suffix;
+                Everlive.PushCallbacks[gcmCallbackName] = _.bind(this._onNotificationGCM, this);
+
+                //Construct registration options object and validate the Android settings
+                var gcmRegistrationOptions = this.pushSettings.android;
+                this._validateAndroidSettings(gcmRegistrationOptions);
+                gcmRegistrationOptions.ecb = 'Everlive.PushCallbacks.' + gcmCallbackName;
+
+                //Register for GCM
+                pushNotification.register(
+                    _.bind(this._successSentRegistrationGCM, this),
+                    _.bind(this._errorSentRegistrationGCM, this),
+                    gcmRegistrationOptions
+                );
+            } else if (platformType === Platform.WindowsPhone) {
+                //Initialize global WP8 callbacks.
+                var wp8CallbackName = 'wp8Callback_' + suffix;
+                var wp8RegistrationSuccessCallbackName = 'wp8RegistrationSuccessCallback_' + suffix;
+                var wp8RegistrationErrorCallbackName = 'wp8RegistrationErrorCallback_' + suffix;
+
+                Everlive.PushCallbacks[wp8CallbackName] = _.bind(this._onNotificationWP8, this);
+                Everlive.PushCallbacks[wp8RegistrationSuccessCallbackName] = _.bind(this._deviceRegistrationSuccessWP, this);
+                Everlive.PushCallbacks[wp8RegistrationErrorCallbackName] = _.bind(this._deviceRegistrationFailed, this);
+
+                //Construct registration options object and validate the WP8  settings
+                var wp8RegistrationOptions = this.pushSettings.wp8;
+                this._validateWP8Settings(wp8RegistrationOptions);
+                wp8RegistrationOptions.ecb = 'Everlive.PushCallbacks.' + wp8CallbackName;
+                wp8RegistrationOptions.uccb = 'Everlive.PushCallbacks.' + wp8RegistrationSuccessCallbackName;
+                wp8RegistrationOptions.errcb = 'Everlive.PushCallbacks.' + wp8RegistrationErrorCallbackName;
+
+
+                pushNotification.register(
+                    _.bind(this._successSentRegistrationWP8, this),
+                    _.bind(this._errorSentRegistrationWP8, this),
+                    wp8RegistrationOptions
+                );
+
+            } else {
+                throw new EverliveError('The current platform is not supported: ' + device.platform);
+            }
+        },
+
+        _deviceRegistrationSuccessWP: function (result) {
+            this._deviceRegistrationSuccess(result.uri);
+        },
+
+        _validateAndroidSettings: function (androidSettings) {
+            if (!androidSettings.senderID) {
+                throw new EverliveError('Sender ID (project number) is not set in the android settings.');
+            }
+        },
+        _validateWP8Settings: function (settings) {
+            if (!settings.channelName) {
+                throw new EverliveError('channelName is not set in the WP8 settings.');
+            }
+        },
+
+        _validateIOSSettings: function (iOSSettings) {
+
+        },
+
+        _cleanPlatformsPushSettings: function (pushSettings) {
+            var cleanSettings = {};
+            pushSettings = pushSettings || {};
+
+            var addSettingsForPlatform = function addSettingsForPlatform(newSettingsObject, platform, allowedFields) {
+                if (!pushSettings[platform]) {
+                    return;
                 }
 
-                self._runNext();
+                newSettingsObject[platform] = newSettingsObject[platform] || {};
+                var newPlatformSettings = pushSettings[platform];
+                var settings = newSettingsObject[platform];
+                _.each(allowedFields, function (allowedField) {
+                    if (newPlatformSettings.hasOwnProperty(allowedField)) {
+                        settings[allowedField] = newPlatformSettings[allowedField];
+                    }
+                });
+            };
+
+            addSettingsForPlatform(cleanSettings, 'iOS', ['badge', 'sound', 'alert', 'interactiveSettings']);
+            addSettingsForPlatform(cleanSettings, 'android', ['senderID', 'projectNumber']);
+            addSettingsForPlatform(cleanSettings, 'wp8', ['channelName']);
+
+            var callbackFields = ['notificationCallbackAndroid', 'notificationCallbackIOS', 'notificationCallbackWP8'];
+            _.each(callbackFields, function (callbackField) {
+                var callback = pushSettings[callbackField];
+                if (callback) {
+                    if (typeof callback !== 'function') {
+                        throw new EverliveError('The "' + callbackField + '" of the push settings should be a function');
+                    }
+
+                    cleanSettings[callbackField] = pushSettings[callbackField];
+                }
             });
 
-            task.apply(null, args);
+            if (pushSettings.customParameters) {
+                cleanSettings.customParameters = pushSettings.customParameters;
+            }
+
+            return cleanSettings;
+        },
+
+        _populateRegistrationObject: function (deviceRegistration, success, error) {
+            var self = this;
+
+            return buildPromise(
+                function (success, error) {
+                    if (!self.pushToken) {
+                        throw new EverliveError('Push token is not available.');
+                    }
+
+                    self._getLocaleName(
+                        function (locale) {
+                            var deviceId = self._getDeviceId();
+                            var hardwareModel = device.model;
+                            var platformType = self._getPlatformType(device.platform);
+                            var timeZone = jstz.determine().name();
+                            var pushToken = self.pushToken;
+                            var language = locale.value;
+                            var platformVersion = device.version;
+
+                            deviceRegistration.HardwareId = deviceId;
+                            deviceRegistration.HardwareModel = hardwareModel;
+                            deviceRegistration.PlatformType = platformType;
+                            deviceRegistration.PlatformVersion = platformVersion;
+                            deviceRegistration.TimeZone = timeZone;
+                            deviceRegistration.PushToken = pushToken;
+                            deviceRegistration.Locale = language;
+
+                            success();
+                        },
+                        error
+                    );
+                },
+                success,
+                error
+            );
+        },
+
+        _getLocaleName: function (success, error) {
+            if (this.emulatorMode) {
+                success({value: 'en_US'});
+            } else {
+                navigator.globalization.getLocaleName(
+                    function (locale) {
+                        success(locale);
+                    },
+                    error
+                );
+                navigator.globalization.getLocaleName(
+                    function (locale) {
+                    },
+                    error
+                );
+            }
+        },
+
+        _getDeviceId: function () {
+            return device.uuid;
+        },
+
+        //Returns the Everlive device platform constant given a value aquired from cordova's device.platform.
+        _getPlatformType: function (platformString) {
+            var psLower = platformString.toLowerCase();
+            switch (psLower) {
+                case 'ios':
+                case 'iphone':
+                case 'ipad':
+                    return Platform.iOS;
+                case 'android':
+                    return Platform.Android;
+                case 'wince':
+                    return Platform.WindowsPhone;
+                case 'win32nt': // real wp8 devices return this string as platform identifier.
+                    return Platform.WindowsPhone;
+                default:
+                    return Platform.Unknown;
+            }
+        },
+
+        _deviceRegistrationFailed: function (error) {
+            this.pushToken = null;
+            this.isInitializing = false;
+            this.isInitialized = false;
+
+            if (this._initErrorCallback) {
+                this._initErrorCallback({error: error});
+            }
+        },
+
+        _deviceRegistrationSuccess: function (token) {
+            this.pushToken = token;
+            this.isInitializing = false;
+            this.isInitialized = true;
+
+            if (this._initSuccessCallback) {
+                this._initSuccessCallback({token: token});
+            }
+        },
+
+        //Occurs when the device registration in APN succeeds
+        _successfulRegistrationAPN: function (token) {
+            var self = this;
+            if (this.pushSettings.iOS && this.pushSettings.iOS.interactiveSettings) {
+                this._initializeInteractivePush(
+                    this.pushSettings.iOS,
+                    function () {
+                        self._deviceRegistrationSuccess(token);
+                    },
+                    function (err) {
+                        throw new EverliveError('The interactive push configuration is incorrect: ' + err);
+                    }
+                );
+            } else {
+                this._deviceRegistrationSuccess(token);
+            }
+        },
+
+        //Occurs if the device registration in APN fails
+        _failedRegistrationAPN: function (error) {
+            this._deviceRegistrationFailed(error);
+        },
+
+        //Occurs when device registration has been successfully sent to GCM
+        _successSentRegistrationGCM: function (id) {
+            //console.log("Successfully sent request for registering with GCM.");
+        },
+        //Occurs when device registration has been successfully sent for WP8
+        _successSentRegistrationWP8: function (id) {
+            //console.log("Successfully sent request for registering WP8 .");
+        },
+        //Occurs when an error occured when sending registration request for WP8
+        _errorSentRegistrationWP8: function (error) {
+            this._deviceRegistrationFailed(error);
+        },
+
+        //Occurs when an error occured when sending registration request to GCM
+        _errorSentRegistrationGCM: function (error) {
+            this._deviceRegistrationFailed(error);
+        },
+
+        //This function receives all notification events from APN
+        _onNotificationAPN: function (e) {
+            this._raiseNotificationEventIOS(e);
+        },
+        //This function receives all notification events for WP8
+        _onNotificationWP8: function (e) {
+            this._raiseNotificationEventWP8(e);
+        },
+
+        //This function receives all notification events from GCM
+        _onNotificationGCM: function onNotificationGCM(e) {
+            switch (e.event) {
+                case 'registered':
+                    if (e.regid.length > 0) {
+                        this._deviceRegistrationSuccess(e.regid);
+                    }
+                    break;
+                case 'message':
+                    this._raiseNotificationEventAndroid(e);
+                    break;
+                case 'error':
+                    if (!this.pushToken) {
+                        this._deviceRegistrationFailed(e);
+                    } else {
+                        this._raiseNotificationEventAndroid(e);
+                    }
+                    break;
+                default:
+                    this._raiseNotificationEventAndroid(e);
+                    break;
+            }
+        },
+
+        _raiseNotificationEventAndroid: function (e) {
+            if (this.pushSettings.notificationCallbackAndroid) {
+                this.pushSettings.notificationCallbackAndroid(e);
+            }
+        },
+        _raiseNotificationEventIOS: function (e) {
+            if (this.pushSettings.notificationCallbackIOS) {
+                this.pushSettings.notificationCallbackIOS(e);
+            }
+        },
+        _raiseNotificationEventWP8: function (e) {
+            if (this.pushSettings.notificationCallbackWP8) {
+                this.pushSettings.notificationCallbackWP8(e);
+            }
         }
     };
 
-    return AutoQueue;
+    return CurrentDevice;
 }());
-},{"./EverliveError":47,"./constants":59,"underscore":35}],45:[function(require,module,exports){
+},{"./EverliveError":44,"./common":53,"./constants":54,"./utils":87}],42:[function(require,module,exports){
 'use strict';
 
 var EventEmitter = require('events').EventEmitter;
@@ -14308,7 +14361,7 @@ var apply = function apply(obj) {
 module.exports = {
     apply: apply
 };
-},{"events":1}],46:[function(require,module,exports){
+},{"events":2}],43:[function(require,module,exports){
 var Setup = require('./Setup');
 var Data = require('./types/Data');
 var usersModule = require('./types/Users');
@@ -14319,7 +14372,6 @@ var buildAuthHeader = utils.buildAuthHeader;
 var Push = require('./Push');
 var Authentication = require('./auth/Authentication');
 var offlineModule = require('./offline/offline');
-var caching = require('./caching/caching');
 var Request = require('./Request');
 var common = require('./common');
 var rsvp = common.rsvp;
@@ -14329,9 +14381,6 @@ var EverliveErrors = require('./EverliveError').EverliveErrors;
 var helpers = require('./helpers/helpers');
 var EventEmitterProxy = require('./EventEmitterProxy');
 
-// Registering mixins:
-var mixins = require('./mixins/mixins');
-
 module.exports = (function () {
 
     // The constructor of Everlive instances.
@@ -14340,29 +14389,24 @@ module.exports = (function () {
     /**
      * @class Everlive
      * @classdesc The constructor of the {{site.bs}} (Everlive) JavaScript SDK. This is the entry point for the SDK.
-     * @param {object|string} options - An object containing configuration options for the Setup object. Alternatively, you can pass a string representing your App ID.
-     * @param {string} options.apiKey - Your API Key. *Deprecated*: use options.appId instead.
-     * @param {string} options.appId - Your app's App ID.
+     * @param {object|string} options - An object containing configuration options for the Setup object. Alternatively, you can pass a string representing your API key.
+     * @param {string} options.apiKey - Your API key.
      * @param {string} [options.url=//api.everlive.com/v1/] - The {{site.TelerikBackendServices}} URL.
      * @param {string} [options.token] - An authentication token. The instance will be associated with the provided previously obtained token.
      * @param {string} [options.tokenType=bearer] - The type of the token that is used for authentication.
      * @param {string} [options.scheme=http] - The URI scheme used to make requests. Supported values: http, https
      * @param {boolean} [options.parseOnlyCompleteDateTimeObjects=false] - If set to true, the SDK will parse only complete date strings (according to the ISO 8601 standard).
      * @param {boolean} [options.emulatorMode=false] - Set this option to true to set the SDK in emulator mode.
-     * @param {object|boolean} [options.offline] - Set this option to true to enable Offline Support using the default offline settings.
-     * @param {boolean} [options.offline.enabled=false] - When using an object to initialize Offline Support with non-default settings, set this option to enable or disable Offline Support.
-     * @param {boolean} [options.offline.isOnline=true] - Whether the storage is in online mode initially.
-     * @param {ConflictResolutionStrategy|function} [options.offline.conflicts.strategy=ConflictResolutionStrategy.ClientWins] - A constant specifying the conflict resolution strategy or a function used to resolve the conflicts.
-     * @param {object} [options.offline.storage] - An object specifying settings for the offline storage.
-     * @param {string} [options.offline.storage.provider=_platform dependant_] - Allows you to select an offline storage provider. Possible values: Everlive.Constants.StorageProvider.LocalStorage, Everlive.Constants.StorageProvider.FileSystem, Everlive.Constants.StorageProvider.Custom. Default value: Cordova, Web: Everlive.Constants.StorageProvider.LocalStorage; NativeScript, Node.js: Everlive.Constants.StorageProvider.FileSystem.
-     * @param {string} [options.offline.storage.storagePath=el_store] - A relative path specifying where data will be saved if the FileSystem provider is used.
-     * @param {number} [options.offline.storage.requestedQuota=10485760] - How much memory (in bytes) to be requested when using FileSystem for persistence. This option is only valid for Chrome as the other platforms use all the available space.
-     * @param {object} [options.offline.storage.implementation] - When storage.provider is set to custom, use this object to specify your custom offline storage implementation.
-     * @param {string} [options.offline.encryption.key] - A key that will be used to encrypt the data stored offline.
-     * @param {string} [options.offline.files.storagePath=el_file_store] - A relative path specifying where the files will be saved if file system is used for persistence of files in offline mode.
-     * @param {string} [options.offline.files.metaPath=el_file_mapping] - A relative path specifying where the metadata file will be saved if file system is used for persistence of files in offline mode.
-     * @param {object|boolean} [options.offline.files] - Set this option to true to enable support for files in offline mode.
-     * @param {number} [options.offline.files.maxConcurrentDownloads] - The maximum amount of files that can be downloaded simultaneously.
+     * @param {object|boolean} [options.offlineStorage] - Set this option to true to use the default offline settings.
+     * @param {boolean} [options.offlineStorage.isOnline=true] - Whether the storage is in online mode initially.
+     * @param {ConflictResolutionStrategy|function} [options.offlineStorage.conflicts.strategy=ConflictResolutionStrategy.ClientWins] - A constant specifying the conflict resolution strategy or a function used to resolve the conflicts.
+     * @param {StorageProvider|object} [options.offlineStorage.storage.provider=StorageProvider.LocalStorage] - An object specifying settings for the offline storage provider.
+     * @param {string} [options.offlineStorage.storage.storagePath=el_store] - A relative path specifying where the files will be saved if file system is used for persistence for item metadata.
+     * @param {number} [options.offlineStorage.storage.requestedQuota=10485760] - How much memory (in bytes) to be requested when using the file system for persistence. This option is only valid for Chrome as the other platforms use all the available space.
+     * @param {string} [options.offlineStorage.encryption.key] - A key that will be used to encrypt the data stored offline.
+     * @param {string} [options.offlineStorage.files.storagePath=el_file_store] - A relative path specifying where the files will be saved if file system is used for persistence of files in offline mode.
+     * @param {string} [options.offlineStorage.files.metaPath=el_file_mapping] - A relative path specifying where the metadata file will be saved if file system is used for persistence of files in offline mode.
+     * @param {object|boolean} [options.offlineStorage.files] - Set this option to true to enable support for files in offline mode.
      * @param {boolean} [options.authentication.persist=false] - Indicates whether the current user's authentication will be persisted.
      * @param {Function} [options.authentication.onAuthenticationRequired] - Invoked when the user's credentials have expired. Allowing you to perform custom logic.
      * @param {object} [options.helpers] - An object holding options for all Everlive helper components.
@@ -14379,10 +14423,6 @@ module.exports = (function () {
      * @param {object} [options.helpers.html.attributes.fileSource=data-href] - A custom name for the attribute to be used to set the anchor source.
      * @param {object} [options.helpers.html.attributes.enableOffline=data-offline] - A custom name for the attribute to be used to control offline processing.
      * @param {object} [options.helpers.html.attributes.enableResponsive=data-responsive] - A custom name for the attribute to be used to control Responsive Images processing.
-     * @param {object|boolean} [options.caching=false] - Set this option to true to enable caching using the default cache settings.
-     * @param {number} [options.caching.maxAge=60] - Global setting for maximum age of cached items in minutes.
-     * @param {boolean} [options.caching.enabled=false] - Global setting for enabling or disabling cache.
-     * @param {object} [options.caching.typeSettings] - Specify per-content-type settings that override the global settings.
      */
     function Everlive(options) {
         var self = this;
@@ -14560,13 +14600,13 @@ module.exports = (function () {
      * @method request
      * @memberOf Everlive.prototype
      * @param {object} options Object used to configure the request.
-     * @param {object} [options.endpoint] The endpoint of the {{site.bs}} JavaScript API relative to the App ID section. (For example, options.endpoint = MyType will make a request to the MyType type.)
+     * @param {object} [options.endpoint] The endpoint of the {{site.bs}} JavaScript API relative to the API key section. (For example, options.endpoint = MyType will make a request to the MyType type.)
      * @param {HttpMethod} [options.method] HTTP request method.
      * @param {object} [options.data] Data to be sent with the request.
      * @param {Function} [options.success] Success callback that will be called when the request finishes successfully.
      * @param {Function} [options.error] Error callback to be called in case of an error.
      * @param {object} [options.headers] Additional headers to be included in the request.
-     * @param {Query|object} [options.filter] This is either a {@link Query} or a [filter](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) expression.
+     * @param {Query|object} [options.filter] This is either a {@link Query} or a [filter]({% slug rest-api-querying-filtering %}) expression.
      * @param {boolean} [options.authHeaders=true] When set to false, no Authorization headers will be sent with the request.
      * @returns {function} The request configuration object containing the `send` function that sends the request.
      */
@@ -14581,8 +14621,7 @@ module.exports = (function () {
     }
 
     Everlive.prototype._isOfflineStorageEnabled = function () {
-        var offlineStorageOptions = this.setup.offlineStorage || this.setup.offline;
-        return offlineStorageOptions && offlineStorageOptions.enabled !== false;
+        return !!this.setup.offlineStorage;
     };
 
     /**
@@ -14639,6 +14678,7 @@ module.exports = (function () {
      * @returns {boolean} Returns true if the SDK is in online mode.
      */
     Everlive.prototype.isOnline = function () {
+        protectOfflineEnabled.call(this);
         return this.offlineStorage.isOnline();
     };
 
@@ -14711,13 +14751,7 @@ module.exports = (function () {
          * @description An instance of the [Authentication]{@link Authentication} class for working with the authentication of the SDK.
          * @member {Authentication} authentication
          */
-        /**
-         * @memberOf Everlive
-         * @instance
-         * @description An instance of the [Authentication]{@link Authentication} class for working with the authentication of the SDK.
-         * @member {authentication} authentication
-         */
-        this.authentication = this.Authentication = new Authentication(this, this.setup.authentication);
+        this.authentication = new Authentication(this, this.setup.authentication);
     };
 
     var initializeHelpers = function initializeHelpers(options) {
@@ -14730,17 +14764,16 @@ module.exports = (function () {
         });
     };
 
-    initializations.push({name: 'caching', func: caching.initCaching});
     initializations.push({name: 'offlineStorage', func: offlineModule.initOfflineStorage});
-    initializations.push({name: 'cacheStore', func: caching._initStore});
     initializations.push({name: 'default', func: initDefault});
     initializations.push({name: 'authentication', func: initAuthentication});
     initializations.push({name: 'helpers', func: initializeHelpers});
 
+
     return Everlive;
 }());
 
-},{"./EventEmitterProxy":45,"./EverliveError":47,"./Push":51,"./Request":52,"./Setup":53,"./auth/Authentication":54,"./caching/caching":57,"./common":58,"./constants":59,"./helpers/helpers":62,"./mixins/mixins":68,"./offline/offline":76,"./types/Data":97,"./types/Files":98,"./types/Users":99,"./utils":100}],47:[function(require,module,exports){
+},{"./EventEmitterProxy":42,"./EverliveError":44,"./Push":48,"./Request":49,"./Setup":50,"./auth/Authentication":51,"./common":53,"./constants":54,"./helpers/helpers":57,"./offline/offline":67,"./types/Data":84,"./types/Files":85,"./types/Users":86,"./utils":87}],44:[function(require,module,exports){
 var EverliveErrors = {
     itemNotFound: {
         code: 801,
@@ -14756,30 +14789,23 @@ var EverliveErrors = {
     },
     syncInProgress: {
         code: 10003,
-        message: 'Cannot perform operation while synchronization is in progress.'
+        message: 'Cannot perform operation while synchronization is in progress'
     },
     syncCancelledByUser: {
         code: 10004,
-        message: 'Synchronization cancelled by user.'
-    },
-    operationNotSupportedOffline: {
-        code: 20000 // the error message is created dynamically based on the query filter for offline storage
-    },
-    invalidId: {
-        code: 20001,
-        message: 'Invalid or missing Id in model.'
+        message: 'Synchronization cancelled by user'
     },
     generalDatabaseError: {
         code: 107,
-        message: 'General database error.'
+        message: 'General database error'
     },
     invalidToken: {
         code: 301,
-        message: 'Invalid access token.'
+        message: 'Invalid access token'
     },
     expiredToken: {
         code: 302,
-        message: 'Expired access token.'
+        message: 'Expired access token'
     },
     invalidExpandExpression: {
         code: 618,
@@ -14799,31 +14825,17 @@ var EverliveErrors = {
     },
     customFileSyncNotSupported: {
         code: 703,
-        message: 'Custom ConflictResolution for files is not allowed.'
+        message: 'Custom ConflictResolution for files is not allowed'
     },
     cannotDownloadOffline: {
         code: 704,
-        message: 'Cannot download a file while offline.'
-    },
-    cannotForceCacheWhenDisabled: {
-        code: 705,
-        message: 'Cannot use forceCache while the caching is disabled.'
-    },
-    filesNotSupportedInBrowser: {
-        code: 706,
-        message: 'Offline files are not supported in web browsers.'
+        message: 'Cannot download a file while offline'
     }
 };
 
 var EverliveError = (function () {
     function EverliveError(message, code) {
         var tmpError = Error.apply(this);
-
-        if (typeof message === 'object') {
-            var err = message;
-            message = err.message;
-            code = err.code;
-        }
 
         tmpError.message = message;
         tmpError.code = code || 0;
@@ -14898,21 +14910,18 @@ module.exports = {
     EverliveErrors: EverliveErrors,
     DeviceRegistrationError: DeviceRegistrationError
 };
-},{}],48:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 var Processor = require('./common').Processor;
 var DataQuery = require('./query/DataQuery');
 var Query = require('./query/Query');
 var EverliveError = require('./EverliveError').EverliveError;
-var constants = require('./constants');
 
 module.exports = (function () {
     return new Processor({
         executionNodeFunction: function (node, expandContext, done) {
-            var targetTypeName = node.targetTypeName.toLowerCase() === constants.FilesTypeNameLegacy ? constants.FilesTypeName : node.targetTypeName;
-
             var query = new DataQuery({
-                operation: DataQuery.operations.Read,
-                collectionName: targetTypeName,
+                operation: DataQuery.operations.read,
+                collectionName: node.targetTypeName,
                 filter: new Query(node.filter, node.select, node.sort, node.skip, node.take)
             });
 
@@ -14923,7 +14932,7 @@ module.exports = (function () {
     });
 }());
 
-},{"./EverliveError":47,"./common":58,"./constants":59,"./query/DataQuery":85,"./query/Query":87}],49:[function(require,module,exports){
+},{"./EverliveError":44,"./common":53,"./query/DataQuery":73,"./query/Query":74}],46:[function(require,module,exports){
 module.exports = (function () {
     function Expression(operator, operands) {
         this.operator = operator;
@@ -14938,7 +14947,7 @@ module.exports = (function () {
 
     return Expression;
 }());
-},{}],50:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 module.exports = (function () {
     //TODO add a function for calculating the distances in geospatial queries
 
@@ -14955,14 +14964,14 @@ module.exports = (function () {
 
     return GeoPoint;
 }());
-},{}],51:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 var utils = require('./utils');
 var buildPromise = utils.buildPromise;
 var DeviceRegistrationResult = utils.DeviceRegistrationResult;
 var everliveErrorModule = require('./EverliveError');
 var DeviceRegistrationError = everliveErrorModule.DeviceRegistrationError;
 var EverliveError = everliveErrorModule.EverliveError;
-var CurrentDevice = require('./push/CurrentDevice');
+var CurrentDevice = require('./CurrentDevice');
 var Platform = require('./constants').Platform;
 
 module.exports = (function () {
@@ -14986,7 +14995,12 @@ module.exports = (function () {
          * @memberOf Push.prototype
          */
         ensurePushIsAvailable: function () {
-            CurrentDevice.ensurePushIsAvailable();
+            var isPushNotificationPluginAvailable = (typeof window !== 'undefined' && window.plugins && window.plugins.pushNotification);
+
+            if (!isPushNotificationPluginAvailable) {
+                throw new EverliveError("The push notification plugin is not available. Ensure that the pushNotification plugin is included " +
+                "and use after `deviceready` event has been fired.");
+            }
         },
         /**
          * Returns the current device for sending push notifications
@@ -15005,11 +15019,15 @@ module.exports = (function () {
                 emulatorMode = this._el.setup._emulatorMode;
             }
 
+            if (!window.cordova) {
+                throw new EverliveError('Error: currentDevice() can only be called from within a hybrid mobile app, after \'deviceready\' event has been fired.');
+            }
+
             if (!this._currentDevice) {
                 this._currentDevice = new CurrentDevice(this);
             }
 
-            this._currentDevice.emulatorMode = emulatorMode || utils._inAppBuilderSimulator();
+            this._currentDevice.emulatorMode = emulatorMode;
 
             return this._currentDevice;
         },
@@ -15083,7 +15101,7 @@ module.exports = (function () {
             };
 
             var clearBadgeIfNeeded = function (token, successCb, errorCb) {
-                var platformType = currentDevice._getPlatformType();
+                var platformType = currentDevice._getPlatformType(device.platform);
                 var clearBadge = platformType === Platform.iOS;
 
                 if (clearBadge && settings.iOS) {
@@ -15194,8 +15212,6 @@ module.exports = (function () {
          * @param {Function} [onError] Callback to invoke on error.
          */
         setBadgeNumber: function (badge, onSuccess, onError) {
-            var self = this;
-
             this.ensurePushIsAvailable();
 
             badge = parseInt(badge);
@@ -15213,7 +15229,7 @@ module.exports = (function () {
             return buildPromise(function (successCb, errorCb) {
                 currentDevice._pushHandler.devices.updateSingle(deviceRegistration).then(
                     function () {
-                        if (window.plugins && window.plugins.pushNotification && !utils._inAppBuilderSimulator()) {
+                        if (window.plugins && window.plugins.pushNotification) {
                             return window.plugins.pushNotification.setApplicationIconBadgeNumber(successCb, errorCb, badge);
                         } else {
                             return successCb();
@@ -15283,6 +15299,8 @@ module.exports = (function () {
          * @param {Function} [onError] Callback to invoke on error.
          */
         send: function (notification, onSuccess, onError) {
+            this.ensurePushIsAvailable();
+
             return this.notifications.create.apply(this.notifications, arguments);
         },
 
@@ -15312,14 +15330,18 @@ module.exports = (function () {
         areNotificationsEnabled: function (options, onSuccess, onError) {
             this.ensurePushIsAvailable();
 
-            var currentDevice = this.currentDevice();
-            return currentDevice.areNotificationsEnabled(options, onSuccess, onError);
+            options = options || {};
+            var pushNotification = window.plugins.pushNotification;
+
+            return buildPromise(function (successCb, errorCb) {
+                pushNotification.areNotificationsEnabled(successCb, errorCb, options);
+            }, onSuccess, onError);
         }
     };
 
     return Push;
 }());
-},{"./EverliveError":47,"./constants":59,"./push/CurrentDevice":83,"./utils":100}],52:[function(require,module,exports){
+},{"./CurrentDevice":41,"./EverliveError":44,"./constants":54,"./utils":87}],49:[function(require,module,exports){
 var utils = require('./utils');
 var rsvp = require('./common').rsvp;
 var buildAuthHeader = utils.buildAuthHeader;
@@ -15345,23 +15367,11 @@ module.exports = (function () {
         this.method = null;
         this.endpoint = null;
         this.data = null;
+        this.headers = {};
         // TODO success and error callbacks should be uniformed for all ajax libs
         this.success = null;
         this.error = null;
         this.parse = Request.parsers.simple;
-
-        var _headers = {};
-        //make sure that the headers are always normalized
-        Object.defineProperty(this, 'headers', {
-            get: function () {
-                return _headers;
-            },
-            set: function (val) {
-                // If we let two identical headers with different casing slip into a request
-                // the browser concatenates them which brings chaos to earth
-                _headers = utils.normalizeKeys(val);
-            }
-        });
 
         _.extend(this, options);
         _self = this;
@@ -15449,6 +15459,7 @@ module.exports = (function () {
         }
     };
 
+    // TODO built for request
     if (typeof Request.sendRequest === 'undefined') {
         Request.sendRequest = function (request) {
             var url = request.buildUrl(request.setup) + request.endpoint;
@@ -15492,7 +15503,7 @@ module.exports = (function () {
 
     return Request;
 }());
-},{"./common":58,"./constants":59,"./everlive.platform":61,"./query/Query":87,"./utils":100}],53:[function(require,module,exports){
+},{"./common":53,"./constants":54,"./everlive.platform":56,"./query/Query":74,"./utils":87}],50:[function(require,module,exports){
 var _ = require('./common')._;
 var constants = require('./constants');
 var AuthenticationSetup = require('./auth/AuthenticationSetup');
@@ -15503,7 +15514,7 @@ module.exports = (function () {
     // An object that keeps information about an Everlive connection
     function Setup(options) {
         this.url = everliveUrl;
-        this.appId = null;
+        this.apiKey = null;
         this.masterKey = null;
         this.token = null;
         this.tokenType = null;
@@ -15511,12 +15522,10 @@ module.exports = (function () {
         this.scheme = 'http'; // http or https
         this.parseOnlyCompleteDateTimeObjects = false;
         if (typeof options === 'string') {
-            this.appId = options;
+            this.apiKey = options;
         } else {
             this._emulatorMode = options.emulatorMode;
             _.extend(this, options);
-            if(options.apiKey)
-                this.appId = options.apiKey; // backward compatibility
         }
 
         this.authentication = new AuthenticationSetup(this, options.authentication);
@@ -15539,7 +15548,7 @@ module.exports = (function () {
     return Setup;
 
 }());
-},{"./auth/AuthenticationSetup":55,"./common":58,"./constants":59}],54:[function(require,module,exports){
+},{"./auth/AuthenticationSetup":52,"./common":53,"./constants":54}],51:[function(require,module,exports){
 'use strict';
 var utils = require('../utils');
 var DataQuery = require('../query/DataQuery');
@@ -15606,7 +15615,7 @@ module.exports = (function () {
             };
 
             var query = new DataQuery({
-                operation: DataQuery.operations.UserLogin,
+                operation: DataQuery.operations.userLogin,
                 collectionName: usersCollectionName,
                 data: {
                     username: username,
@@ -15654,7 +15663,7 @@ module.exports = (function () {
             };
 
             var query = new DataQuery({
-                operation: DataQuery.operations.UserLogout,
+                operation: DataQuery.operations.userLogout,
                 collectionName: usersCollectionName,
                 skipAuth: true,
                 onSuccess: successFunc,
@@ -15964,7 +15973,7 @@ module.exports = (function () {
             };
 
             var query = new DataQuery({
-                operation: DataQuery.operations.UserLoginWithProvider,
+                operation: DataQuery.operations.userLoginWithProvider,
                 collectionName: usersCollectionName,
                 data: user,
                 authHeaders: false,
@@ -15981,7 +15990,7 @@ module.exports = (function () {
     return Authentication;
 }());
 
-},{"../Everlive":46,"../EverliveError":47,"../Request":52,"../constants":59,"../query/DataQuery":85,"../storages/LocalStore":94,"../utils":100}],55:[function(require,module,exports){
+},{"../Everlive":43,"../EverliveError":44,"../Request":49,"../constants":54,"../query/DataQuery":73,"../storages/LocalStore":81,"../utils":87}],52:[function(require,module,exports){
 'use strict';
 module.exports = (function () {
     var AuthenticationSetup = function (everlive, options) {
@@ -15992,373 +16001,7 @@ module.exports = (function () {
 
     return AuthenticationSetup;
 }());
-},{}],56:[function(require,module,exports){
-'use strict';
-
-var constants = require('../constants');
-var common = require('../common');
-var utils = require('../utils');
-var buildPromise = utils.buildPromise;
-var jsonStringify = common.jsonStringify;
-var rsvp = common.rsvp;
-var _ = require('underscore');
-
-var persisters = require('../offline/offlinePersisters');
-var EverliveError = require('../EverliveError').EverliveError;
-var Query = require('../query/Query');
-var DataQuery = require('../query/DataQuery');
-var buildOfflineStorageOptions = require('../offline/offline').buildOfflineStorageOptions;
-
-var CacheModule = function (options, everlive) {
-    this.options = options;
-    this.typeSettings = this.options.typeSettings;
-    this.maxAgeInMs = this.options.maxAge * 60 * 1000;
-    this._everlive = everlive;
-};
-
-var cacheableOperations = [
-    DataQuery.operations.Read,
-    DataQuery.operations.ReadById,
-    DataQuery.operations.Count
-];
-
-/**
- * @class CacheModule
- * @classDesc A class providing access to the various caching features.
- */
-
-/**
- * Represents the {@link CacheModule} class.
- * @memberOf Everlive.prototype
- * @member {CacheModule} cache
- */
-CacheModule.prototype = {
-    _hash: function (obj) {
-        return jsonStringify(obj);
-    },
-
-    // using the offline storage options to initialize the same type of storage
-    _initStore: function (sdkOptions) {
-        if (!this.persister) {
-            var offlineStorageOptions = buildOfflineStorageOptions(sdkOptions);
-            var storageKey = this.options.storage.storagePath + '_' + sdkOptions.apiKey;
-
-            this.persister = persisters.getPersister(storageKey, offlineStorageOptions);
-        }
-    },
-
-    _getCacheData: function () {
-        var self = this;
-
-        if (!this.cacheData) {
-            return this._persisterGetAllDataWrap()
-                .then(function (cacheData) {
-                    self.cacheData = cacheData;
-                    return self.cacheData;
-                });
-        }
-
-        return utils.successfulPromise(this.cacheData);
-    },
-
-    _persisterGetAllDataWrap: function () {
-        var self = this;
-
-        return new rsvp.Promise(function (resolve, reject) {
-            return self.persister.getAllData(resolve, reject);
-        });
-    },
-
-    _persisterSaveDataWrap: function (contentType, data) {
-        var self = this;
-        return new rsvp.Promise(function (resolve, reject) {
-            return self.persister.saveData(contentType, JSON.stringify(data), resolve, reject);
-        });
-    },
-
-    _getCacheDataForContentType: function (contentType) {
-        return this._getCacheData()
-            .then(function (cacheData) {
-                if (typeof cacheData[contentType] === 'string') {
-                    cacheData[contentType] = JSON.parse(cacheData[contentType]);
-                } else {
-                    cacheData[contentType] = cacheData[contentType] || {};
-                }
-
-                return _.clone(cacheData[contentType]);
-            })
-    },
-
-    _persistCacheData: function (contentType, cacheData) {
-        var self = this;
-
-        return this._getCacheDataForContentType(contentType)
-            .then(function () {
-                var dataToCache = _.extend({}, self.cacheData[contentType], cacheData);
-                self.cacheData[contentType] = _.compactObject(dataToCache);
-                return self._persisterSaveDataWrap(contentType, self.cacheData[contentType]);
-            });
-    },
-
-    isQueryUnsupportedOffline: function (dataQuery) {
-        var hasPowerfieldsExpression = !!dataQuery.getHeader(constants.Headers.powerFields);
-        var queryParams = dataQuery.getQueryParameters();
-        var dataQueryFilter = queryParams.filter;
-        var unsupportedDbOperators = utils.getUnsupportedOperators(dataQueryFilter);
-        var hasUnsupportedOperators = unsupportedDbOperators.length !== 0;
-        return hasPowerfieldsExpression || hasUnsupportedOperators;
-    },
-
-    _shouldSkipCache: function (dataQuery) {
-        var operationShouldSkipCache = cacheableOperations.indexOf(dataQuery.operation) === -1;
-        var collectionName = dataQuery.collectionName;
-        var typeSettings = this.typeSettings;
-        var cacheDisabledForContentType = typeSettings && typeSettings && typeSettings[collectionName] && typeSettings[collectionName].enabled === false;
-        var ignoreCacheForQuery = dataQuery.ignoreCache;
-
-        var isUnsupportedOffline = this.isQueryUnsupportedOffline(dataQuery);
-
-        return operationShouldSkipCache || cacheDisabledForContentType || ignoreCacheForQuery || isUnsupportedOffline;
-    },
-
-    _cacheDataQuery: function (dataQuery) {
-        if (this._shouldSkipCache(dataQuery)) {
-            if (dataQuery.ignoreCache && !this.isQueryUnsupportedOffline(dataQuery)) {
-                var hash = this._getHashForQuery(dataQuery);
-                this._cacheQuery(dataQuery, hash);
-            } else {
-                this._everlive.data(dataQuery.collectionName)._sendRequest(dataQuery);
-            }
-        } else {
-            dataQuery.useCache = false;
-            this._processCacheItem(dataQuery);
-        }
-    },
-
-    _processCacheItem: function (dataQuery) {
-        var self = this;
-
-        var contentType = dataQuery.collectionName;
-        var hash = this._getHashForQuery(dataQuery);
-        return this._getCacheDataForContentType(contentType)
-            .then(function (cacheData) {
-                if (cacheData[hash]) {
-                    return self._isHashExpired(contentType, hash, dataQuery.maxAge)
-                        .then(function (isExpired) {
-                            if (isExpired && !dataQuery.forceCache) {
-                                return self._purgeForHash(contentType, hash)
-                                    .then(function () {
-                                        return self._cacheQuery(dataQuery, hash);
-                                    });
-                            } else {
-                                //If cache is used, change 'me' to the ID of the logged in user (only for currentUser() requests).
-                                if (dataQuery.operation === DataQuery.operations.ReadById && dataQuery.additionalOptions.id === 'me') {
-                                    dataQuery.additionalOptions.id = self._everlive.setup.principalId;
-                                }
-
-                                return self._everlive.offlineStorage.processQuery(dataQuery)
-                                    .then(function (result) {
-                                        dataQuery.onSuccess(result);
-                                    })
-                                    .catch(dataQuery.onError);
-                            }
-                        });
-                } else {
-                    return self._cacheQuery(dataQuery, hash);
-                }
-            });
-    },
-
-    _addObjectToCache: function (obj, contentType, maxAge) {
-        var itemHash = obj.Id;
-        return this._cacheResultFromDataQuery(contentType, itemHash, maxAge);
-    },
-
-    _cacheQuery: function (dataQuery, hash) {
-        var self = this;
-        var contentType = dataQuery.collectionName;
-
-        var originalSuccess = dataQuery.onSuccess;
-        dataQuery.onSuccess = function (response) {
-            var args = arguments;
-
-            return self._getCacheData()
-                .then(function () {
-                    var cacheForItems = [];
-                    var result = response.result;
-
-                    if (dataQuery.operation !== DataQuery.operations.Count) {
-                        if (Array.isArray(result)) {
-                            _.each(result, function (singleResult) {
-                                var cacheItemPromise = self._addObjectToCache(singleResult, dataQuery.collectionName);
-                                cacheForItems.push(cacheItemPromise);
-                            });
-                        } else if (_.isObject(result)) {
-                            var cacheItemPromise = self._addObjectToCache(result, dataQuery.collectionName);
-                            cacheForItems.push(cacheItemPromise);
-                        }
-                    }
-
-                    return rsvp.all(cacheForItems)
-                        .then(function () {
-                            if (dataQuery.operation !== DataQuery.operations.Count) {
-                                return self._cacheResultFromDataQuery(contentType, hash);
-                            }
-                        })
-                        .then(function () {
-                            return originalSuccess.apply(this, args);
-                        });
-                });
-        };
-
-        this._everlive.data(dataQuery.collectionName)._sendRequest(dataQuery);
-    },
-
-    _cacheResultFromDataQuery: function (contentType, hash) {
-        var cacheData = {};
-        cacheData[hash] = {
-            cachedAt: Date.now()
-        };
-
-        return this._persistCacheData(contentType, cacheData);
-    },
-
-    _getExpirationForHash: function (contentType, hash) {
-        return this._getCacheDataForContentType(contentType)
-            .then(function (cacheData) {
-                return cacheData[hash].cachedAt;
-            });
-    },
-
-    _isHashExpired: function (contentType, hash, maxAge) {
-        var self = this;
-
-        return this._getExpirationForHash(contentType, hash)
-            .then(function (cachedAt) {
-                var maxAgeForContentType = self.typeSettings && self.typeSettings[contentType] ? self.typeSettings[contentType].maxAge * 60 * 1000 : null;
-                var cacheAge = maxAge || maxAgeForContentType || self.maxAgeInMs;
-                return (cachedAt + cacheAge) < Date.now();
-            });
-    },
-
-    _purgeForHash: function (contentType, hash) {
-        var cacheData = {};
-        cacheData[hash] = null;
-
-        return this._persistCacheData(contentType, cacheData);
-    },
-
-    _getHashForQuery: function (dataQuery) {
-        if (dataQuery.operation === DataQuery.operations.ReadById) {
-            return dataQuery.additionalOptions.id;
-        }
-
-        var queryParams = dataQuery.getQueryParameters();
-        return this._hash(queryParams);
-    },
-
-    /**
-     * Clears the cached data for a specified content type.
-     * @method clear
-     * @name clear
-     * @param {string} contentType The content type to clear.
-     * @memberOf CacheModule.prototype
-     * @returns {Promise}
-     */
-    /**
-     * Clears the cached data for a specified content type.
-     * @method clear
-     * @name clear
-     * @param {string} contentType The content type to clear.
-     * @memberOf CacheModule.prototype
-     * @param {function} [success] A success callback.
-     * @param {function} [error] An error callback.
-     */
-    clear: function (contentType, success, error) {
-        var self = this;
-
-        return buildPromise(function (success, error) {
-            return self.persister.purge(contentType, function () {
-                delete self.cacheData[contentType];
-                if (self._everlive.offlineStorage.setup.enabled) {
-                    success();
-                } else {
-                    self._everlive.offlineStorage._queryProcessor._persister.purge(contentType, success, error);
-                }
-            }, error);
-        }, success, error);
-    },
-
-    /**
-     * Clears all data from the cache.
-     * @method clearAll
-     * @name clearAll
-     * @memberOf CacheModule.prototype
-     * @returns {Promise}
-     */
-    /**
-     * Clears all data from the cache.
-     * @method clearAll
-     * @name clearAll
-     * @memberOf CacheModule.prototype
-     * @param {function} [success] A success callback.
-     * @param {function} [error] An error callback.
-     */
-    clearAll: function (success, error) {
-        var self = this;
-        self.cacheData = null;
-
-        return buildPromise(function (success, error) {
-            return self.persister.purgeAll(function () {
-                if (self._everlive.offlineStorage.setup.enabled) {
-                    success();
-                } else {
-                    self._everlive.offlineStorage._queryProcessor._persister.purgeAll(success, error);
-                }
-            }, error)
-        }, success, error);
-    }
-};
-
-module.exports = CacheModule;
-},{"../EverliveError":47,"../common":58,"../constants":59,"../offline/offline":76,"../offline/offlinePersisters":77,"../query/DataQuery":85,"../query/Query":87,"../utils":100,"underscore":35}],57:[function(require,module,exports){
-'use strict';
-
-var CacheModule = require('./CacheModule');
-var _ = require('../common')._;
-
-var getDefaultOptions = function () {
-    return {
-        maxAge: 60,
-        enabled: false,
-        storage: {
-            storagePath: 'el_cache'
-        }
-    }
-};
-
-module.exports = {
-    initCaching: function (options) {
-        var cachingOptions;
-        var defaultOptions = getDefaultOptions();
-        if (options.caching === true) {
-            cachingOptions = _.deepExtend({}, defaultOptions);
-            cachingOptions.enabled = true;
-        } else {
-            cachingOptions = _.deepExtend(defaultOptions, options.caching);
-        }
-
-        if (options.caching !== false) {
-            this.setup.caching = cachingOptions;
-        }
-
-        this.cache = new CacheModule(cachingOptions, this);
-    },
-    _initStore: function (options) {
-        this.cache._initStore(options);
-    }
-};
-},{"../common":58,"./CacheModule":56}],58:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 (function (global){
 module.exports = (function () {
     var common = {};
@@ -16391,7 +16034,8 @@ module.exports = (function () {
         //for the everlive bundle without dependencies included, browserify replaces them with empty objects
         //we need to make sure that these dependencies are marked as undefined
         if (dependencyStore[localName] &&
-            typeof dependencyStore[localName] === 'object' && !Object.keys(dependencyStore[localName]).length) {
+            typeof dependencyStore[localName] === 'object' &&
+            !Object.keys(dependencyStore[localName]).length) {
 
             dependencyStore[localName] = undefined;
         }
@@ -16418,21 +16062,21 @@ module.exports = (function () {
     dependencyStore.Processor = require('../scripts/bs-expand-processor');
     exportDependency('Processor');
 
+    dependencyStore.Base64 = require('Base64');
+    exportDependency('Base64');
+
     dependencyStore.rsvp = require('rsvp');
     exportDependency('RSVP', 'rsvp');
 
     exportDependency('reqwest');
 
-    dependencyStore.jsonStringify = require('json-stable-stringify');
-    exportDependency('json-stable-stringify', 'jsonStringify');
-
     return common;
 }());
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-
-},{"../scripts/bs-expand-processor":39,"./everlive.platform":61,"./reqwest.nativescript":91,"./reqwest.nodejs":92,"json-stable-stringify":7,"jstimezonedetect":11,"mingo":12,"mongo-query":14,"reqwest":33,"rsvp":34,"underscore":35}],59:[function(require,module,exports){
+},{"../scripts/bs-expand-processor":36,"./everlive.platform":56,"./reqwest.nativescript":78,"./reqwest.nodejs":79,"Base64":1,"jstimezonedetect":8,"mingo":9,"mongo-query":11,"reqwest":30,"rsvp":31,"underscore":32}],54:[function(require,module,exports){
 /**
- * Constants used by the SDK* @typedef {Object} Everlive.Constants
+ * Constants used by the SDK
+ * @typedef {Object} Everlive.Constants
  */
 
 var constants = {
@@ -16473,10 +16117,10 @@ var constants = {
     DefaultStoragePath: 'el_store',
 
     // the default location for storing files offline
-    DefaultFilesStoragePath: 'el_file_store',
+    DefaultFilesStoragePath: 'el_file_store/',
 
     // the default location for storing offline to online location map
-    DefaultFilesMetadataPath: 'el_file_mapping',
+    DefaultFilesMetadataPath: 'el_file_mapping/',
 
     EncryptionProvider: {
         Default: 'default',
@@ -16485,19 +16129,17 @@ var constants = {
 
     // The headers used by the Everlive services
     Headers: {
-        filter: 'x-everlive-filter',
-        select: 'x-everlive-fields',
-        sort: 'x-everlive-sort',
-        skip: 'x-everlive-skip',
-        take: 'x-everlive-take',
-        expand: 'x-everlive-expand',
-        singleField: 'x-everlive-single-field',
-        includeCount: 'x-everlive-include-count',
-        powerFields: 'x-everlive-power-fields',
-        debug: 'x-everlive-debug',
-        overrideSystemFields: 'x-everlive-override-system-fields',
-        sdk: 'x-everlive-sdk',
-        sync: 'x-everlive-sync'
+        filter: 'X-Everlive-Filter',
+        select: 'X-Everlive-Fields',
+        sort: 'X-Everlive-Sort',
+        skip: 'X-Everlive-Skip',
+        take: 'X-Everlive-Take',
+        expand: 'X-Everlive-Expand',
+        singleField: 'X-Everlive-Single-Field',
+        includeCount: 'X-Everlive-Include-Count',
+        powerFields: 'X-Everlive-Power-Fields',
+        debug: 'X-Everlive-Debug',
+        overrideSystemFields: 'X-Everlive-Override-System-Fields'
     },
     //Constants for different platforms in Everlive
     Platform: {
@@ -16610,53 +16252,14 @@ constants.syncBatchSize = 10;
 
 constants.AuthStoreKey = '__everlive_auth_key';
 
-constants.CachingStoreKey = '__everlive_cache';
-
 // the minimum interval between sync requests
 constants.defaultSyncInterval = 1000 * 60 * 10; // 10 minutes
 constants.fileUploadKey = 'fileUpload';
 constants.fileUploadDelimiter = '_';
 
-constants.FilesTypeNameLegacy = 'system.files';
-constants.FilesTypeName = 'Files';
-
-constants.MaxConcurrentDownloadTasks = 3;
-
-constants.Events = {
-    SyncStart: 'syncStart',
-    SyncEnd: 'syncEnd',
-    Processed: 'processed',
-    ItemProcessed: 'itemProcessed',
-    BeforeExecute: 'beforeExecute'
-};
-
-constants.DataQueryOperations = {
-    Read: 'read',
-    Create: 'create',
-    Update: 'update',
-    Delete: 'destroy',
-    DeleteById: 'destroySingle',
-    ReadById: 'readById',
-    Count: 'count',
-    RawUpdate: 'rawUpdate',
-    SetAcl: 'setAcl',
-    SetOwner: 'setOwner',
-    UpdateById: 'updateSingle', // used only by the event query
-    UserLogin: 'login',
-    UserLogout: 'logout',
-    UserChangePassword: 'changePassword',
-    UserLoginWithProvider: 'loginWith',
-    UserLinkWithProvider: 'linkWith',
-    UserUnlinkFromProvider: 'unlinkFrom',
-    UserResetPassword: 'resetPassword',
-    UserSetPassword: 'setPassword',
-    FilesUpdateContent: 'updateContent',
-    FilesGetDownloadUrlById: 'downloadUrlById'
-};
-
 module.exports = constants;
 
-},{}],60:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 var CryptoJS = require('node-cryptojs-aes').CryptoJS;
 var AES = CryptoJS.AES;
 
@@ -16694,43 +16297,26 @@ module.exports = (function () {
 
     return CryptographicProvider;
 }());
-},{"node-cryptojs-aes":25}],61:[function(require,module,exports){
+},{"node-cryptojs-aes":22}],56:[function(require,module,exports){
 (function (global){
 var isNativeScript = Boolean(((typeof android !== 'undefined' && android && android.widget && android.widget.Button)
-|| (typeof UIButton !== 'undefined' && UIButton)));
-
-var platform;
-var isCordova = false;
-var isWindowsPhone = false;
-var isAndroid = false;
+    || (typeof UIButton !== 'undefined' && UIButton)));
 
 if (isNativeScript) {
     global.window = {
-        localStorage: {
-            removeItem: function () {
-            } //shim for mongo-query under nativescript
-        }
-    };
-
+            localStorage: {
+                removeItem: function () { } //shim for mongo-query under nativescript
+            }
+        };
 } else if (typeof window !== 'undefined') {
-    isCordova = /^file:\/{3}[^\/]|x-wmapp/i.test(window.location.href) && /ios|iphone|ipod|ipad|android|iemobile/i.test(navigator.userAgent);
-    isWindowsPhone = isCordova && /iemobile/i.test(navigator.userAgent);
-    isAndroid = isCordova && cordova.platformId === 'android';
+    var isCordova = /^file:\/{3}[^\/]|x-wmapp/i.test(window.location.href) && /ios|iphone|ipod|ipad|android|iemobile/i.test(navigator.userAgent);
+    var isWindowsPhone = isCordova && /iemobile/i.test(navigator.userAgent);
+    var isAndroid = isCordova && cordova.platformId === 'android';
 }
 
 var isNodejs = typeof exports === 'object' && typeof window === 'undefined';
 var isRequirejs = typeof define === 'function' && define.amd;
 var isDesktop = !isNativeScript && !isCordova && !isNodejs;
-
-if (isNativeScript) {
-    platform = 'ns';
-} else if (isNodejs) {
-    platform = 'nodejs';
-} else if (isDesktop) {
-    platform = 'desktop';
-} else if (isCordova) {
-    platform = 'cordova';
-}
 
 module.exports = {
     isCordova: isCordova,
@@ -16739,12 +16325,10 @@ module.exports = {
     isWindowsPhone: isWindowsPhone,
     isAndroid: isAndroid,
     isNodejs: isNodejs,
-    isRequirejs: isRequirejs,
-    platform: platform
+    isRequirejs: isRequirejs
 };
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-
-},{}],62:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 'use strict';
 
 /**
@@ -16766,7 +16350,7 @@ if (platform.isCordova || platform.isDesktop) {
 }
 
 module.exports = helpers;
-},{"../everlive.platform":61,"./html/htmlHelper":63}],63:[function(require,module,exports){
+},{"../everlive.platform":56,"./html/htmlHelper":58}],58:[function(require,module,exports){
 'use strict';
 
 var platform = require('../../everlive.platform');
@@ -16807,7 +16391,7 @@ module.exports = (function () {
 
         this._everlive = everlive;
         this._settings = {
-            urlTemplate: '[protocol][hostname][appid]/[operations][url]',
+            urlTemplate: '[protocol][hostname][apikey]/[operations][url]',
             server: 'bs1.cdn.telerik.com/image/v1/'
         };
 
@@ -16835,7 +16419,7 @@ module.exports = (function () {
         },
 
         _triggerOnProcessed: function _triggerOnProcessed(args) {
-            this._emitter.emit(constants.Events.Processed, args);
+            this._emitter.emit('processed', args);
         },
 
         _defaultProcessSettings: function _defaultProcessSettings(settings) {
@@ -17152,7 +16736,7 @@ module.exports = (function () {
     return HtmlHelper;
 }());
 
-},{"../../EventEmitterProxy":45,"../../EverliveError":47,"../../common":58,"../../constants":59,"../../everlive.platform":61,"../../utils":100,"./htmlHelperOfflineModule":64,"./htmlHelperResponsiveModule":65}],64:[function(require,module,exports){
+},{"../../EventEmitterProxy":42,"../../EverliveError":44,"../../common":53,"../../constants":54,"../../everlive.platform":56,"../../utils":87,"./htmlHelperOfflineModule":59,"./htmlHelperResponsiveModule":60}],59:[function(require,module,exports){
 'use strict';
 
 var utils = require('../../utils');
@@ -17182,7 +16766,7 @@ module.exports = (function () {
                     return localUrl;
                 })
                 .catch(function (err) {
-                    if (err.code !== EverliveErrors.cannotDownloadOffline.code) {
+                    if (err !== EverliveErrors.cannotDownloadOffline) {
                         throw err;
                     }
 
@@ -17210,7 +16794,7 @@ module.exports = (function () {
 
     return HtmlHelperOfflineModule;
 }());
-},{"../../EverliveError":47,"../../common":58,"../../constants":59,"../../utils":100,"path":3}],65:[function(require,module,exports){
+},{"../../EverliveError":44,"../../common":53,"../../constants":54,"../../utils":87,"path":4}],60:[function(require,module,exports){
 'use strict';
 
 var common = require('../../common');
@@ -17266,9 +16850,9 @@ module.exports = (function () {
             var imgUrl = src.replace(/.*?resize=[^//]*\//gi, '');
             var protocolRe = new RegExp('https?://', 'gi');
             var serverRe = new RegExp(this.htmlHelper._settings.server, 'gi');
-            var apiIdRe = new RegExp(this.htmlHelper._everlive.appId + '/', 'gi');
+            var apiKeyRe = new RegExp(this.htmlHelper._everlive.apiKey + '/', 'gi');
 
-            operations = src.replace(imgUrl, '').replace(protocolRe, '').replace(serverRe, '').replace(apiIdRe, '').toLowerCase();
+            operations = src.replace(imgUrl, '').replace(protocolRe, '').replace(serverRe, '').replace(apiKeyRe, '').toLowerCase();
             if (operations !== '') {
                 operations = operations.indexOf('/') ? operations.substring(0, operations.length - 1) : operations;
             } else {
@@ -17370,7 +16954,7 @@ module.exports = (function () {
 
         getImgSrc: function getImgSrc(image, imgWidth) {
             var protocol = this.htmlHelper._everlive.setup.scheme + '://';
-            var appId = this.htmlHelper._everlive.setup.appId;
+            var apiKey = this.htmlHelper._everlive.setup.apiKey;
             var server = this.htmlHelper._settings.server;
             var url = this.htmlHelper._settings.urlTemplate;
             var pixelDensity = this.getPixelRatio(image.item);
@@ -17378,7 +16962,7 @@ module.exports = (function () {
             pixelDensity = pixelDensity ? ',pd:' + pixelDensity : '';
 
             url = url.replace('[protocol]', protocol);
-            url = url.replace('[appid]', appId ? appId : '');
+            url = url.replace('[apikey]', apiKey ? apiKey : '');
             url = url.replace('[hostname]', server);
 
             var params = image.operations || false;
@@ -17402,7 +16986,7 @@ module.exports = (function () {
 
     return HtmlHelperResponsiveModule;
 }());
-},{"../../EverliveError":47,"../../common":58,"../../constants":59,"../../utils":100}],66:[function(require,module,exports){
+},{"../../EverliveError":44,"../../common":53,"../../constants":54,"../../utils":87}],61:[function(require,module,exports){
 /*!
  The MIT License (MIT)
  Copyright (c) 2013 Telerik AD
@@ -17424,7 +17008,7 @@ module.exports = (function () {
  */
 /*!
  Everlive SDK
- Version 1.6.0
+ Version 1.4.1
  */
 (function () {
     var Everlive = require('./Everlive');
@@ -17457,10 +17041,22 @@ module.exports = (function () {
         FileSystem: persistersModule.FileSystemPersister
     };
 
-    module.exports = Everlive;
-}());
+    //everliveModule is provided by a closure generated during build
+    if (platform.isNodejs || platform.isNativeScript) {
+        if (typeof everliveModule !== 'undefined') {
+            everliveModule.exports = Everlive;
+        }
 
-},{"./Everlive":46,"./GeoPoint":50,"./Request":52,"./common":58,"./constants":59,"./everlive.platform":61,"./kendo/kendo.everlive":67,"./offline/offlinePersisters":77,"./query/Query":87,"./query/QueryBuilder":88,"./types/Data":97,"./utils":100}],67:[function(require,module,exports){
+        if (typeof module !== 'undefined') {
+            module.exports = Everlive;
+        }
+    } else {
+        //in requirejs Everlive is defined in the same closure
+        //browser
+        common.root.Everlive = Everlive;
+    }
+}());
+},{"./Everlive":43,"./GeoPoint":47,"./Request":49,"./common":53,"./constants":54,"./everlive.platform":56,"./kendo/kendo.everlive":62,"./offline/offlinePersisters":68,"./query/Query":74,"./query/QueryBuilder":75,"./types/Data":84,"./utils":87}],62:[function(require,module,exports){
 var QueryBuilder = require('../query/QueryBuilder');
 var Query = require('../query/Query');
 var Request = require('../Request');
@@ -17468,13 +17064,6 @@ var constants = require('../constants');
 var _ = require('../common')._;
 var Everlive = require('../Everlive');
 var EverliveError = require('../EverliveError').EverliveError;
-
-var operations = {
-    read: 'read',
-    update: 'update',
-    destroy: 'destroy',
-    create: 'create'
-};
 
 (function () {
     'use strict';
@@ -17491,8 +17080,6 @@ var operations = {
     var everliveTransport = kendo.data.RemoteTransport.extend({
         init: function (options) {
             this.everlive$ = options.dataProvider || Everlive.$;
-
-            this._subscribeToSdkEvents(options);
             if (!this.everlive$) {
                 throw new Error('An instance of the Backend services sdk must be provided.');
             }
@@ -17575,24 +17162,8 @@ var operations = {
             if (isMultiple) {
                 throw new Error('Batch destroy is not supported.');
             }
-
-            var removeFilter = {
-                Id: options.data.Id
-            };
-
-            return this.dataCollection.withHeaders(this.headers).withHeaders(methodHeaders).destroySingle(removeFilter)
+            return this.dataCollection.withHeaders(this.headers).withHeaders(methodHeaders).destroy(options.data)
                 .then(options.success, options.error).catch(options.error);
-        },
-
-        _subscribeToSdkEvents: function (options) {
-            var self = this;
-
-            _.map(operations, function (op) {
-                if (options && options[op] && typeof options[op].beforeSend === 'function') {
-                    var listener = options[op].beforeSend;
-                    self.everlive$.on(Everlive.Constants.Events.BeforeExecute, listener);
-                }
-            });
         }
     });
 
@@ -18024,161 +17595,7 @@ var operations = {
         createHierarchicalDataSource: createHierarchicalDataSource
     };
 }());
-},{"../Everlive":46,"../EverliveError":47,"../Request":52,"../common":58,"../constants":59,"../query/Query":87,"../query/QueryBuilder":88}],68:[function(require,module,exports){
-var _ = require('../common')._;
-
-var deepExtend = require('./underscoreDeepExtend');
-var compactObject = require('./underscoreCompactObject');
-var isObjectEmpty = require('./underscoreIsObjectEmpty');
-
-_.mixin({'deepExtend': deepExtend});
-_.mixin({'compactObject': compactObject});
-_.mixin({'isEmptyObject': isObjectEmpty});
-},{"../common":58,"./underscoreCompactObject":69,"./underscoreDeepExtend":70,"./underscoreIsObjectEmpty":71}],69:[function(require,module,exports){
-var _ = require('underscore');
-
-//http://stackoverflow.com/questions/14058193/remove-empty-properties-falsy-values-from-object-with-underscore-js
-module.exports = function compactObject(o) {
-    var newObject = {};
-    _.each(o, function(v, k) {
-        if(v !== null && v !== undefined) {
-            newObject[k] = v
-        }
-    });
-
-    return newObject;
-};
-
-},{"underscore":35}],70:[function(require,module,exports){
-/*  Copyright (C) 2012-2014  Kurt Milam - http://xioup.com | Source: https://gist.github.com/1868955
- *   
- *  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
- *  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
- *
- *  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- **/
-
-// Based conceptually on the _.extend() function in underscore.js ( see http://documentcloud.github.com/underscore/#extend for more details )
-
-var _ = require('../common')._;
-
-module.exports = function deepExtend(obj) {
-    var parentRE = /#{\s*?_\s*?}/,
-        slice = Array.prototype.slice;
-
-    _.each(slice.call(arguments, 1), function (source) {
-        for (var prop in source) {
-            if (_.isUndefined(obj[prop]) || _.isFunction(obj[prop]) || _.isNull(source[prop]) || _.isDate(source[prop])) {
-                obj[prop] = source[prop];
-            }
-            else if (_.isString(source[prop]) && parentRE.test(source[prop])) {
-                if (_.isString(obj[prop])) {
-                    obj[prop] = source[prop].replace(parentRE, obj[prop]);
-                }
-            }
-            else if (_.isArray(obj[prop]) || _.isArray(source[prop])) {
-                if (!_.isArray(obj[prop]) || !_.isArray(source[prop])) {
-                    throw new Error('Trying to combine an array with a non-array (' + prop + ')');
-                } else {
-                    obj[prop] = _.reject(_.deepExtend(_.clone(obj[prop]), source[prop]), function (item) {
-                        return _.isNull(item);
-                    });
-                }
-            }
-            else if (_.isObject(obj[prop]) || _.isObject(source[prop])) {
-                if (!_.isObject(obj[prop]) || !_.isObject(source[prop])) {
-                    throw new Error('Trying to combine an object with a non-object (' + prop + ')');
-                } else {
-                    obj[prop] = _.deepExtend(_.clone(obj[prop]), source[prop]);
-                }
-            } else {
-                obj[prop] = source[prop];
-            }
-        }
-    });
-    return obj;
-};
-
-/**
- * Dependency: underscore.js ( http://documentcloud.github.com/underscore/ )
- *
- * Mix it in with underscore.js:
- * _.mixin({deepExtend: deepExtend});
- *
- * Call it like this:
- * var myObj = _.deepExtend(grandparent, child, grandchild, greatgrandchild)
- *
- * Notes:
- * Keep it DRY.
- * This function is especially useful if you're working with JSON config documents. It allows you to create a default
- * config document with the most common settings, then override those settings for specific cases. It accepts any
- * number of objects as arguments, giving you fine-grained control over your config document hierarchy.
- *
- * Special Features and Considerations:
- * - parentRE allows you to concatenate strings. example:
- *   var obj = _.deepExtend({url: "www.example.com"}, {url: "http://#{_}/path/to/file.html"});
- *   console.log(obj.url);
- *   output: "http://www.example.com/path/to/file.html"
- *
- * - parentRE also acts as a placeholder, which can be useful when you need to change one value in an array, while
- *   leaving the others untouched. example:
- *   var arr = _.deepExtend([100,    {id: 1234}, true,  "foo",  [250, 500]],
- *                          ["#{_}", "#{_}",     false, "#{_}", "#{_}"]);
- *   console.log(arr);
- *   output: [100, {id: 1234}, false, "foo", [250, 500]]
- *
- * - The previous example can also be written like this:
- *   var arr = _.deepExtend([100,    {id:1234},   true,  "foo",  [250, 500]],
- *                          ["#{_}", {},          false, "#{_}", []]);
- *   console.log(arr);
- *   output: [100, {id: 1234}, false, "foo", [250, 500]]
- *
- * - And also like this:
- *   var arr = _.deepExtend([100,    {id:1234},   true,  "foo",  [250, 500]],
- *                          ["#{_}", {},          false]);
- *   console.log(arr);
- *   output: [100, {id: 1234}, false, "foo", [250, 500]]
- *
- * - Array order is important. example:
- *   var arr = _.deepExtend([1, 2, 3, 4], [1, 4, 3, 2]);
- *   console.log(arr);
- *   output: [1, 4, 3, 2]
- *
- * - You can remove an array element set in a parent object by setting the same index value to null in a child object.
- *   example:
- *   var obj = _.deepExtend({arr: [1, 2, 3, 4]}, {arr: ["#{_}", null]});
- *   console.log(obj.arr);
- *   output: [1, 3, 4]
- *
- **/
-},{"../common":58}],71:[function(require,module,exports){
-// http://stackoverflow.com/questions/4994201/is-object-empty
-'use strict';
-
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-
-function isEmpty(obj) {
-
-    // null and undefined are "empty"
-    if (obj == null) return true;
-
-    // Assume if it has a length property with a non-zero value
-    // that that property is correct.
-    if (obj.length > 0)    return false;
-    if (obj.length === 0)  return true;
-
-    // Otherwise, does it have any properties of its own?
-    // Note that this doesn't handle
-    // toString and valueOf enumeration bugs in IE < 9
-    for (var key in obj) {
-        if (hasOwnProperty.call(obj, key)) return false;
-    }
-
-    return true;
-}
-
-module.exports = isEmpty;
-},{}],72:[function(require,module,exports){
+},{"../Everlive":43,"../EverliveError":44,"../Request":49,"../common":53,"../constants":54,"../query/Query":74,"../query/QueryBuilder":75}],63:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -18194,12 +17611,10 @@ var CryptoJS = require('node-cryptojs-aes').CryptoJS;
 var errors = require('../EverliveError');
 var EverliveErrors = errors.EverliveErrors;
 var EverliveError = errors.EverliveError;
-var AutoQueue = require('../AutoQueue');
 
-var OfflineFilesModule = function (offlineFilesProcessor, everlive, downloadsConcurrency) {
+var OfflineFilesModule = function (offlineFilesProcessor, everlive) {
     this._offlineFilesProcessor = offlineFilesProcessor;
     this._everlive = everlive;
-    this._downloadsQueue = new AutoQueue(downloadsConcurrency);
 };
 
 /**
@@ -18209,7 +17624,7 @@ var OfflineFilesModule = function (offlineFilesProcessor, everlive, downloadsCon
  */
 OfflineFilesModule.prototype = {
     _getFilenameMetadata: function (location, offlineFileInfo) {
-        return new rsvp.Promise(function (resolve, reject) {
+        return new rsvp.Promise(function (resolve) {
             reqwest({
                 url: location,
                 method: 'HEAD',
@@ -18218,7 +17633,7 @@ OfflineFilesModule.prototype = {
             }).then(function (xmlResponse) {
                 var contentDispositionHeader = xmlResponse.getResponseHeader('Content-Disposition');
                 if (contentDispositionHeader) {
-                    var matches = /filename="?([^"\\]*(?:\\.[^"\\]*)*)"?/i.exec(contentDispositionHeader);
+                    var matches = /filename="([^"\\]*(?:\\.[^"\\]*)*)"/i.exec(contentDispositionHeader);
                     if (_.isArray(matches)) {
                         offlineFileInfo.filename = matches[1];
                     }
@@ -18226,8 +17641,11 @@ OfflineFilesModule.prototype = {
                     offlineFileInfo.filename = path.basename(xmlResponse.responseURL);
                 }
 
-                resolve(xmlResponse.responseURL);
-            }).catch(reject);
+                resolve();
+            }).catch(function () {
+                resolve();
+            });
+
         });
     },
 
@@ -18252,53 +17670,48 @@ OfflineFilesModule.prototype = {
         var self = this;
 
         return buildPromise(function (success, error) {
-            self._downloadsQueue.enqueue(function (cb) {
-                var offlineFileInfo;
-                return self._getOfflineFileInfo(location)
-                    .then(function (_offlineFileInfo) {
-                        offlineFileInfo = _offlineFileInfo;
-                        if (overwrite) {
-                            return false;
-                        }
+            var offlineFileInfo;
+            return self._getOfflineFileInfo(location)
+                .then(function (_offlineFileInfo) {
+                    offlineFileInfo = _offlineFileInfo;
+                    if (overwrite) {
+                        return false;
+                    }
 
-                        return self.existsOffline(location);
-                    })
-                    .then(function (exists) {
-                        if (!exists) {
-                            if (self._everlive.isOnline()) {
-                                return utils.successfulPromise()
-                                    .then(function () {
-                                        if (!offlineFileInfo.filename) {
-                                            return self._getFilenameMetadata(location, offlineFileInfo);
-                                        }
-                                    })
-                                    .then(function (locationAfterRedirect) {
-                                        var location = locationAfterRedirect || offlineFileInfo.location;
-                                        return self._saveFile(location, offlineFileInfo.filename, null, offlineFileInfo.location);
-                                    });
-                            }
-
-                            error(new EverliveError(EverliveErrors.cannotDownloadOffline));
-                        } else {
-                            return self._getOfflineFileInfo(location)
-                                .then(function (fileInfo) {
-                                    return self._getOfflineLocation(fileInfo);
+                    return self.existsOffline(location);
+                })
+                .then(function (exists) {
+                    if (!exists) {
+                        if (self._everlive.isOnline()) {
+                            return utils.successfulPromise()
+                                .then(function () {
+                                    if (!offlineFileInfo.filename) {
+                                        return self._getFilenameMetadata(location, offlineFileInfo);
+                                    }
+                                })
+                                .then(function () {
+                                    return self._saveFile(offlineFileInfo.location, offlineFileInfo.filename);
                                 });
                         }
-                    })
-                    .then(function (result) {
-                        cb(null, result);
-                    })
-                    .catch(cb);
-            }, success, error);
+
+                        error(EverliveErrors.cannotDownloadOffline);
+                    } else {
+                        return self._getOfflineFileInfo(location)
+                            .then(function (fileInfo) {
+                                return self._getOfflineLocation(fileInfo);
+                            });
+                    }
+                })
+                .then(success)
+                .catch(error);
         }, success, error);
     },
 
-    _saveFile: function (location, filename, id, cacheKey) {
+    _saveFile: function (location, filename) {
         var self = this;
         var actualLocation;
 
-        return self._downloadFile(location, filename)
+        return self._downloadFile(location , filename)
             .then(function (_actualLocation) {
                 actualLocation = _actualLocation;
                 return self._offlineFilesProcessor.getOfflineFilesData();
@@ -18306,8 +17719,7 @@ OfflineFilesModule.prototype = {
             .then(function (offlineFilesData) {
                 offlineFilesData.push({
                     offlineLocation: actualLocation,
-                    onlineLocation: cacheKey || location,
-                    id: id
+                    onlineLocation: location
                 });
 
                 return self._offlineFilesProcessor.saveOfflineFilesData();
@@ -18352,7 +17764,7 @@ OfflineFilesModule.prototype = {
         var filename = fileInfo.filename;
         var id = fileInfo.Id;
 
-        return self._offlineFilesProcessor.getOfflineLocation(url, id)
+        return self._offlineFilesProcessor.getOfflineLocation(url, filename)
             .then(function (offlineUrl) {
                 if (offlineUrl) {
                     return offlineUrl;
@@ -18379,7 +17791,7 @@ OfflineFilesModule.prototype = {
             var extension = path.extname(name);
             var filename = fileId;
             if (path.extname(sanitizedUrl) !== extension) {
-                filename += extension;
+                 filename += extension;
             }
 
             var fileParentDirectory = '';
@@ -18526,20 +17938,6 @@ OfflineFilesModule.prototype = {
         return buildPromise(function (success, error) {
             self._getOfflineFileInfo(location)
                 .then(self._getOfflineLocation.bind(self))
-                .then(function (offlineLocation) {
-                    if (offlineLocation) {
-                        return self.existsOffline(offlineLocation)
-                            .then(function (exists) {
-                                if (exists) {
-                                    return offlineLocation;
-                                }
-
-                                return null;
-                            });
-                    }
-
-                    return null;
-                })
                 .then(success)
                 .catch(error);
         }, success, error);
@@ -18628,7 +18026,7 @@ OfflineFilesModule.prototype = {
 };
 
 module.exports = OfflineFilesModule;
-},{"../AutoQueue":44,"../EverliveError":47,"../Request":52,"../common":58,"../utils":100,"node-cryptojs-aes":25,"path":3}],73:[function(require,module,exports){
+},{"../EverliveError":44,"../Request":49,"../common":53,"../utils":87,"node-cryptojs-aes":22,"path":4}],64:[function(require,module,exports){
 'use strict';
 
 var EverliveErrorModule = require('../EverliveError');
@@ -18655,12 +18053,12 @@ OfflineFilesProcessor.prototype = {
     validateFileCreateObject: function (obj, isSync) {
         return new rsvp.Promise(function (resolve, reject) {
             if (!obj.base64 && !isSync) {
-                return reject(new EverliveError(EverliveErrors.missingOrInvalidFileContent));
+                return reject(EverliveErrors.missingOrInvalidFileContent);
             } else if (!obj.ContentType) {
-                return reject(new EverliveError(EverliveErrors.missingContentType));
+                return reject(EverliveErrors.missingContentType);
             } else if (!obj.Filename) {
                 //TODO: [offline] add an appropriate error
-                return reject(new EverliveError(EverliveErrors.invalidRequest));
+                return reject(EverliveErrors.invalidRequest);
             }
 
             resolve();
@@ -18705,11 +18103,11 @@ OfflineFilesProcessor.prototype = {
         if (!isSync) {
             if (isCreate) {
                 if (!obj.base64) {
-                    return utils.rejectedPromise(new EverliveError(EverliveErrors.missingOrInvalidFileContent));
+                    return utils.rejectedPromise(EverliveErrors.missingOrInvalidFileContent);
                 }
 
                 if (!obj.ContentType) {
-                    return utils.rejectedPromise(new EverliveError(EverliveErrors.missingContentType));
+                    return utils.rejectedPromise(EverliveErrors.missingContentType);
                 }
             } else {
                 if (!obj.base64) {
@@ -18760,12 +18158,12 @@ OfflineFilesProcessor.prototype = {
                 .then(function (offlineFilesData) {
                     offlineFilesData.push({
                         offlineLocation: offlineFileInfo.offlineLocation,
-                        onlineLocation: onlineLocation,
-                        id: obj._id
+                        onlineLocation: onlineLocation
                     });
 
+                    //TODO: maybe save the filesdata?
+
                     obj.Length = offlineFileInfo.size;
-                    return self.saveOfflineFilesData();
                 });
         });
     },
@@ -18819,34 +18217,40 @@ OfflineFilesProcessor.prototype = {
         return obj._id + extension;
     },
 
-    getOfflineLocation: function (url, id) {
+    getOfflineLocation: function (url) {
         return this.getOfflineFilesData()
             .then(function (offlineFilesData) {
-                if (!url && !id) {
+                if (!url) {
                     return;
                 }
 
-                for (var i = 0; i < offlineFilesData.length; i++) {
-                    var fileEntry = offlineFilesData[i];
-                    var urlMatches = (url && (fileEntry.offlineLocation === url || fileEntry.onlineLocation === url));
-                    var idMatches = (id && fileEntry.id === id);
-                    if (urlMatches || idMatches) {
-                        return fileEntry.offlineLocation;
-                    }
+                var isOfflineUrl = !!_.findWhere(offlineFilesData, {
+                    offlineLocation: url
+                });
+
+                if (isOfflineUrl) {
+                    return url;
+                }
+
+                var offlineFileData = _.findWhere(offlineFilesData, {
+                    onlineLocation: url
+                });
+
+                if (offlineFileData) {
+                    return offlineFileData.offlineLocation;
                 }
             });
     }
 };
 
 module.exports = OfflineFilesProcessor;
-},{"../EverliveError":47,"../common":58,"../constants":59,"../everlive.platform":61,"../storages/FileStore":93,"../utils":100,"path":3}],74:[function(require,module,exports){
+},{"../EverliveError":44,"../common":53,"../constants":54,"../everlive.platform":56,"../storages/FileStore":80,"../utils":87,"path":4}],65:[function(require,module,exports){
 'use strict';
 
 var DataQuery = require('../query/DataQuery');
 var utils = require('../utils');
 var offlineTransformations = require('./offlineTransformations');
 var expandProcessor = require('../ExpandProcessor');
-var platform = require('../everlive.platform');
 
 var everliveErrorModule = require('../EverliveError');
 var EverliveError = everliveErrorModule.EverliveError;
@@ -18869,26 +18273,26 @@ var offlineItemStates = constants.offlineItemStates;
 var unsupportedOfflineHeaders = [Headers.powerFields];
 
 var unsupportedUsersOperations = {};
-unsupportedUsersOperations[DataQuery.operations.Create] = true;
-unsupportedUsersOperations[DataQuery.operations.Update] = true;
-unsupportedUsersOperations[DataQuery.operations.Delete] = true;
-unsupportedUsersOperations[DataQuery.operations.DeleteById] = true;
-unsupportedUsersOperations[DataQuery.operations.RawUpdate] = true;
-unsupportedUsersOperations[DataQuery.operations.SetAcl] = true;
-unsupportedUsersOperations[DataQuery.operations.SetOwner] = true;
-unsupportedUsersOperations[DataQuery.operations.UserLoginWithProvider] = true;
-unsupportedUsersOperations[DataQuery.operations.UserLinkWithProvider] = true;
-unsupportedUsersOperations[DataQuery.operations.UserUnlinkFromProvider] = true;
-unsupportedUsersOperations[DataQuery.operations.UserLogin] = true;
-unsupportedUsersOperations[DataQuery.operations.UserLogout] = true;
-unsupportedUsersOperations[DataQuery.operations.UserChangePassword] = true;
-unsupportedUsersOperations[DataQuery.operations.UserResetPassword] = true;
+unsupportedUsersOperations[DataQuery.operations.create] = true;
+unsupportedUsersOperations[DataQuery.operations.update] = true;
+unsupportedUsersOperations[DataQuery.operations.remove] = true;
+unsupportedUsersOperations[DataQuery.operations.removeSingle] = true;
+unsupportedUsersOperations[DataQuery.operations.rawUpdate] = true;
+unsupportedUsersOperations[DataQuery.operations.setAcl] = true;
+unsupportedUsersOperations[DataQuery.operations.setOwner] = true;
+unsupportedUsersOperations[DataQuery.operations.userLoginWithProvider] = true;
+unsupportedUsersOperations[DataQuery.operations.userLinkWithProvider] = true;
+unsupportedUsersOperations[DataQuery.operations.userUnlinkFromProvider] = true;
+unsupportedUsersOperations[DataQuery.operations.userLogin] = true;
+unsupportedUsersOperations[DataQuery.operations.userLogout] = true;
+unsupportedUsersOperations[DataQuery.operations.userChangePassword] = true;
+unsupportedUsersOperations[DataQuery.operations.userResetPassword] = true;
 
 function buildUsersErrorMessage(dataQuery) {
     var unsupportedUserSocialProviderOperations = [
-        DataQuery.operations.UserLoginWithProvider,
-        DataQuery.operations.UserLinkWithProvider,
-        DataQuery.operations.UserUnlinkFromProvider
+        DataQuery.operations.userLoginWithProvider,
+        DataQuery.operations.userLinkWithProvider,
+        DataQuery.operations.userUnlinkFromProvider
     ];
 
     var operation = dataQuery.operation;
@@ -18914,14 +18318,6 @@ function OfflineQueryProcessor(persister, encryptionProvider, offlineFilesProces
 
 OfflineQueryProcessor.prototype = {
     processQuery: function (dataQuery) {
-        if (utils.isContentType.files(dataQuery.collectionName) && platform.isDesktop) {
-            if (this.everlive.isOnline()) {
-                return utils.successfulPromise();
-            } else {
-                return utils.rejectedPromise(new EverliveError(EverliveErrors.filesNotSupportedInBrowser));
-            }
-        }
-
         var unsupportedClientOpMessage = this.getUnsupportedClientOpMessage(dataQuery);
         if (unsupportedClientOpMessage && !dataQuery.isSync) {
             return new rsvp.Promise(function (resolve, reject) {
@@ -18929,8 +18325,26 @@ OfflineQueryProcessor.prototype = {
             });
         }
 
-        var queryParams = dataQuery.getQueryParameters();
-        var unsupportedOperators = utils.getUnsupportedOperators(queryParams.filter);
+        var sort = dataQuery.getHeaderAsJSON(Headers.sort);
+        var limit = dataQuery.getHeaderAsJSON(Headers.take);
+        var skip = dataQuery.getHeaderAsJSON(Headers.skip);
+        var select = dataQuery.getHeaderAsJSON(Headers.select);
+        var filter = dataQuery.getHeaderAsJSON(Headers.filter);
+        var expand = dataQuery.getHeaderAsJSON(Headers.expand);
+
+        if (dataQuery.filter instanceof Query) {
+            var filterObj = dataQuery.filter.build();
+            filter = filterObj.$where || filter || {};
+            sort = filterObj.$sort || sort;
+            limit = filterObj.$take || limit;
+            skip = filterObj.$skip || skip;
+            select = filterObj.$select || select;
+            expand = filterObj.$expand || expand;
+        } else {
+            filter = (dataQuery.filter || filter) || {};
+        }
+
+        var unsupportedOperators = utils.getUnsupportedOperators(filter);
         var unsupportedOperatorCount = unsupportedOperators.length;
         if (unsupportedOperatorCount) {
             return new rsvp.Promise(function (resolve, reject) {
@@ -18941,33 +18355,33 @@ OfflineQueryProcessor.prototype = {
                     errorMessage = 'The operators ' + unsupportedOperators.join(',') + 'are not supported in offline mode.';
                 }
 
-                reject(new EverliveError(errorMessage, EverliveErrors.operationNotSupportedOffline.code));
+                reject(new EverliveError(errorMessage));
             });
         }
 
-        offlineTransformations.traverseAndTransformFilterId(queryParams.filter);
+        offlineTransformations.traverseAndTransformFilterId(filter);
 
         switch (dataQuery.operation) {
-            case DataQuery.operations.Read:
-                return this.read(dataQuery, queryParams.filter, queryParams.sort, queryParams.skip, queryParams.limit, queryParams.select, queryParams.expand);
-            case DataQuery.operations.ReadById:
-                return this.readById(dataQuery, queryParams.expand);
-            case DataQuery.operations.FilesGetDownloadUrlById:
+            case DataQuery.operations.read:
+                return this.read(dataQuery, filter, sort, skip, limit, select, expand);
+            case DataQuery.operations.readById:
+                return this.readById(dataQuery, expand);
+            case DataQuery.operations.filesGetDownloadUrlById:
                 return this.getDownloadUrlById(dataQuery);
-            case DataQuery.operations.Count:
-                return this.count(dataQuery, queryParams.filter);
-            case DataQuery.operations.Create:
+            case DataQuery.operations.count:
+                return this.count(dataQuery, filter);
+            case DataQuery.operations.create:
                 return this.create(dataQuery);
-            case DataQuery.operations.RawUpdate:
-            case DataQuery.operations.Update:
-                return this.update(dataQuery, queryParams.filter);
-            case DataQuery.operations.FilesUpdateContent:
-                return this.updateFileContent(dataQuery, queryParams.filter);
-            case DataQuery.operations.Delete:
-                return this.remove(dataQuery, queryParams.filter);
-            case DataQuery.operations.DeleteById:
-                queryParams.filter._id = dataQuery.additionalOptions.id;
-                return this.remove(dataQuery, queryParams.filter);
+            case DataQuery.operations.rawUpdate:
+            case DataQuery.operations.update:
+                return this.update(dataQuery, filter);
+            case DataQuery.operations.filesUpdateContent:
+                return this.updateFileContent(dataQuery, filter);
+            case DataQuery.operations.remove:
+                return this.remove(dataQuery, filter);
+            case DataQuery.operations.removeSingle:
+                filter._id = dataQuery.additionalOptions.id;
+                return this.remove(dataQuery, filter);
             default:
                 return new rsvp.Promise(function (resolve, reject) {
                     if (dataQuery.isSync) {
@@ -19025,8 +18439,8 @@ OfflineQueryProcessor.prototype = {
         }
 
         var isSingle = dataQuery.additionalOptions && dataQuery.additionalOptions.id;
-        var isUpdateByFilter = dataQuery.operation === DataQuery.operations.Update && !isSingle;
-        var isRawUpdate = dataQuery.operation === DataQuery.operations.RawUpdate;
+        var isUpdateByFilter = dataQuery.operation === DataQuery.operations.update && !isSingle;
+        var isRawUpdate = dataQuery.operation === DataQuery.operations.rawUpdate;
         if (utils.isContentType.files(dataQuery.collectionName) && (isRawUpdate || isUpdateByFilter)) {
             return buildFilesErrorMessage(dataQuery);
         }
@@ -19156,7 +18570,7 @@ OfflineQueryProcessor.prototype = {
                     var item = self._getById(collection, dataQuery.additionalOptions.id);
 
                     if (!item) {
-                        return reject(new EverliveError(EverliveErrors.itemNotFound));
+                        return reject(EverliveErrors.itemNotFound);
                     }
 
                     item = offlineTransformations.idTransform(item);
@@ -19458,7 +18872,7 @@ OfflineQueryProcessor.prototype = {
 
                         if (!itemExists && !isSync) {
                             // TODO: [offline] return the correct error
-                            throw new EverliveError(EverliveErrors.itemNotFound);
+                            throw new Error(EverliveErrors.itemNotFound);
                         }
 
                         self._applyUpdateOperation(updateExpression, itemToUpdate, collection, isSync, dataQuery.ModifiedAt);
@@ -19669,36 +19083,20 @@ OfflineQueryProcessor.prototype = {
         var self = this;
         this._collectionCache = {};
         return buildPromise(function (success, error) {
-            self._collectionCache = {};
-
-            self._persister.purgeAll(function () {
-                if (self.everlive.setup.caching) {
-                    self.everlive.cache.clearAll(success, error);
-                } else {
-                    success();
-                }
-            }, error);
+            self._persister.purgeAll(success, error);
         }, success, error);
     },
 
     purge: function (contentType, success, error) {
         var self = this;
         return buildPromise(function (success, error) {
-            delete self._collectionCache[contentType];
-
-            self._persister.purge(contentType, function () {
-                if (self.everlive.setup.caching) {
-                    self.everlive.cache.clear(contentType, success, error);
-                } else {
-                    success();
-                }
-            }, error);
+            self._persister.purge(contentType, success, error);
         }, success, error);
     }
 };
 
 module.exports = OfflineQueryProcessor;
-},{"../EverliveError":47,"../ExpandProcessor":48,"../common":58,"../constants":59,"../everlive.platform":61,"../query/DataQuery":85,"../query/Query":87,"../utils":100,"./offlineTransformations":78,"path":3}],75:[function(require,module,exports){
+},{"../EverliveError":44,"../ExpandProcessor":45,"../common":53,"../constants":54,"../query/DataQuery":73,"../query/Query":74,"../utils":87,"./offlineTransformations":69,"path":4}],66:[function(require,module,exports){
 var DataQuery = require('../query/DataQuery');
 var everliveErrorModule = require('../EverliveError');
 var EverliveError = everliveErrorModule.EverliveError;
@@ -19723,6 +19121,13 @@ var syncLocation = {
     client: 'client'
 };
 
+var syncStartEventData = {
+    cancel: function () {
+        throw new EverliveError(EverliveErrors.syncCancelledByUser.message, EverliveErrors.syncCancelledByUser.code);
+    }
+};
+
+
 /**
  * @class OfflineModule
  * @classDesc A class providing access to the various offline storage features.
@@ -19741,18 +19146,19 @@ module.exports = (function () {
         this._isSynchronizing = false;
         this._encryptionProvider = encryptionProvider;
 
-        this._offlineFilesProcessor = new OfflineFilesProcessor(this.setup, this._everlive);
-        this._queryProcessor = new OfflineQueryProcessor(persister, encryptionProvider,
-            this._offlineFilesProcessor, this._everlive, this.setup);
+        if (this.setup.enabled) {
+            this._offlineFilesProcessor = new OfflineFilesProcessor(this.setup, this._everlive);
+            this._queryProcessor = new OfflineQueryProcessor(persister, encryptionProvider, this._offlineFilesProcessor, this._everlive, this.setup);
 
-        /**
-         * @memberOf OfflineModule.prototype
-         * @instance
-         * @description An instance of the [OfflineFilesModule]{@link OfflineFilesModule} class for working with files in offline mode.
-         * @member {OfflineFilesModule} files
-         */
-        this.files = new OfflineFilesModule(this._offlineFilesProcessor,
-            this._everlive, this.setup.files.maxConcurrentDownloads);
+
+            /**
+             * @memberOf Everlive.prototype
+             * @instance
+             * @description An instance of the [OfflineFilesModule]{@link OfflineFilesModule} class for working with files in offline mode.
+             * @member {OfflineFilesModule} files
+             */
+            this.files = new OfflineFilesModule(this._offlineFilesProcessor, this._everlive);
+        }
     }
 
     var getSyncFilterForItem = function (item) {
@@ -19770,7 +19176,7 @@ module.exports = (function () {
 
     OfflineModule.prototype = {
         /**
-         * Removes all data from the offline storage. If caching is enabled clears the entire cache as well.
+         * Removes all data from the offline storage.
          * @method purgeAll
          * @name purgeAll
          * @memberOf OfflineModule.prototype
@@ -19778,19 +19184,18 @@ module.exports = (function () {
          * @param {function} [error] An error callback.
          */
         /**
-         * Removes all data from the offline storage. If caching is enabled clears the entire cache as well.
+         * Removes all data from the offline storage.
          * @method purgeAll
          * @name purgeAll
          * @memberOf OfflineModule.prototype
-         * @returns {Promise}
+         * @returns Promise
          */
         purgeAll: function (success, error) {
             return this._queryProcessor.purgeAll(success, error);
         },
 
         /**
-         * Removes all data for a specific content type from the offline storage. If caching is enabled clears the cache
-         * for the specified content type as well.
+         * Removes all data for a specific content type from the offline storage.
          * @method purge
          * @name purge
          * @memberOf OfflineModule.prototype
@@ -19799,13 +19204,12 @@ module.exports = (function () {
          * @param {function} [error] An error callback.
          */
         /**
-         * Removes all data for a specific content type from the offline storage. If caching is enabled clears the cache
-         * for the specified content type as well.
+         * Removes all data for a specific content type from the offline storage.
          * @method purge
          * @name purge
          * @memberOf OfflineModule.prototype
          * @param {string} contentType The content type to purge.
-         * @returns {Promise}
+         * @returns Promise
          */
         purge: function (contentType, success, error) {
             return this._queryProcessor.purge(contentType, success, error);
@@ -19862,7 +19266,7 @@ module.exports = (function () {
             return new rsvp.Promise(function (resolve) {
                 if (!self._isSynchronizing) {
                     self._isSynchronizing = true;
-                    self._everlive._emitter.emit(constants.Events.SyncStart);
+                    self._everlive._emitter.emit('syncStart', syncStartEventData);
                     resolve();
                 } else {
                     resolve();
@@ -19871,8 +19275,15 @@ module.exports = (function () {
         },
 
         _fireSyncEnd: function () {
+            var self = this;
+
             this._isSynchronizing = false;
-            this._everlive._emitter.emit(constants.Events.SyncEnd, this._syncResultInfo);
+            _.each(this._syncResultInfo.syncedItems, function (syncedItems) {
+                self._syncResultInfo.syncedToServer += _.where(syncedItems, {storage: syncLocation.server}).length;
+                self._syncResultInfo.syncedToClient += _.where(syncedItems, {storage: syncLocation.client}).length;
+            });
+
+            this._everlive._emitter.emit('syncEnd', this._syncResultInfo);
             delete this._syncResultInfo;
         },
 
@@ -19884,12 +19295,11 @@ module.exports = (function () {
                 // if we already have an error for this item we do not want to try and sync it again
                 var resultItem = item.resultingItem;
                 var isCustom = item.isCustom;
-                var resolutionType = item.resolutionType;
                 if (_.some(self._syncResultInfo.failedItems[contentTypeName], {itemId: resultItem.Id})) {
                     return;
                 }
 
-                operation(resultItem, itemFilter, isCustom, resolutionType);
+                operation(resultItem, itemFilter, isCustom);
             });
         },
 
@@ -19919,7 +19329,7 @@ module.exports = (function () {
                         })
                         .then(function (res) {
                             var mergedWithServerResponseItem = _.extend({}, item, res.result);
-                            self._onItemProcessed(mergedWithServerResponseItem, collectionName, syncLocation.server, offlineItemStates.created);
+                            self._addSyncedItemToResult(mergedWithServerResponseItem, collectionName, syncLocation.server, offlineItemStates.created);
                             return filesCollection
                                 .isSync(true)
                                 .useOffline(true)
@@ -19987,10 +19397,8 @@ module.exports = (function () {
                     options.params = {};
 
                     _.each(item, function (value, key) {
-                        if (key.toLowerCase() !== 'base64') {
-                            var prefixedKey = constants.fileUploadKey + constants.fileUploadDelimiter + key;
-                            options.params[prefixedKey] = value;
-                        }
+                        var prefixedKey = constants.fileUploadKey + constants.fileUploadDelimiter + key;
+                        options.params[prefixedKey] = value;
                     });
 
                     fileTransfer.upload(location, uploadUrl, function (result) {
@@ -20004,7 +19412,7 @@ module.exports = (function () {
                         } else {
                             resolve(parsedResult);
                         }
-                    }, reject, options, true);
+                    }, reject, options);
                 });
             });
         },
@@ -20012,81 +19420,76 @@ module.exports = (function () {
         _addCreatedObjectToSyncPromises: function (syncPromises, dataCollection, resultingItemsForCreate, contentTypeData, collectionName, ids) {
             var self = this;
 
-            var promise = new rsvp.Promise(function (resolve, reject) {
-                dataCollection
-                    .isSync(true)
-                    .applyOffline(false)
-                    .create(resultingItemsForCreate)
-                    .then(function (res) {
-                        resultingItemsForCreate = _.map(resultingItemsForCreate, function (item, index) {
-                            item.Id = res.result[index].Id;
-                            item.CreatedAt = item.ModifiedAt = res.result[index].CreatedAt;
-                            var resultingItem = _.find(contentTypeData.createdItems, function (createdItem) {
-                                return createdItem.resultingItem.Id === item.Id;
-                            });
+            syncPromises[offlineItemStates.created] =
+                new rsvp.Promise(function (resolve, reject) {
+                    dataCollection
+                        .isSync(true)
+                        .applyOffline(false)
+                        .create(resultingItemsForCreate)
+                        .then(function (res) {
+                            resultingItemsForCreate = _.map(resultingItemsForCreate, function (item, index) {
+                                item.Id = res.result[index].Id;
+                                item.CreatedAt = item.ModifiedAt = res.result[index].CreatedAt;
+                                if (contentTypeData.isCustom) {
+                                    self._addSyncedItemToResult(item, collectionName, syncLocation.client, offlineItemStates.created);
+                                }
 
-                            if (resultingItem.isCustom) {
-                                self._onItemProcessed(item, collectionName, syncLocation.client, offlineItemStates.modified);
-                            }
-
-                            return item;
-                        });
-                    }, function (err) {
-                        throw {
-                            type: offlineItemStates.created,
-                            items: resultingItemsForCreate,
-                            contentType: collectionName,
-                            error: err,
-                            storage: syncLocation.server
-                        };
-                    })
-                    .then(function () {
-                        return dataCollection
-                            .isSync(true)
-                            .useOffline(true)
-                            .create(resultingItemsForCreate)
-                            .then(function () {
-                                _.each(resultingItemsForCreate, function (createdItem) {
-                                    self._onItemProcessed(createdItem, collectionName, syncLocation.server,
-                                        offlineItemStates.created);
-                                });
-                            }, function (err) {
-                                throw {
-                                    type: offlineItemStates.created,
-                                    items: resultingItemsForCreate,
-                                    contentType: collectionName,
-                                    error: err,
-                                    storage: syncLocation.client
-                                };
+                                return item;
                             });
-                    })
-                    .then(function () {
-                        if (ids && ids.length) {
-                            var filter = {Id: {$in: ids}};
+                        }, function (err) {
+                            reject({
+                                type: offlineItemStates.created,
+                                items: resultingItemsForCreate,
+                                contentType: collectionName,
+                                error: err,
+                                storage: syncLocation.server
+                            })
+                        })
+                        .then(function () {
                             return dataCollection
                                 .isSync(true)
                                 .useOffline(true)
-                                .destroy(filter)
-                                .catch(function (err) {
-                                    throw {
+                                .create(resultingItemsForCreate)
+                                .then(function () {
+                                    _.each(resultingItemsForCreate, function (createdItem) {
+                                        self._addSyncedItemToResult(createdItem, collectionName, syncLocation.server, offlineItemStates.created);
+                                    });
+                                }, function (err) {
+                                    reject({
                                         type: offlineItemStates.created,
                                         items: resultingItemsForCreate,
                                         contentType: collectionName,
                                         error: err,
                                         storage: syncLocation.client
-                                    };
+                                    })
                                 });
-                        }
-                    })
-                    .then(resolve)
-                    .catch(function (err) {
-                        reject(err);
-                    });
-            });
-
-            _.each(resultingItemsForCreate, function (item) {
-                syncPromises[item.Id] = promise;
-            });
+                        })
+                        .then(function () {
+                            if (ids && ids.length) {
+                                var filter = {Id: {$in: ids}};
+                                return dataCollection
+                                    .isSync(true)
+                                    .useOffline(true)
+                                    .destroy(filter).catch(function (err) {
+                                        reject({
+                                            type: offlineItemStates.created,
+                                            items: resultingItemsForCreate,
+                                            contentType: collectionName,
+                                            error: err,
+                                            storage: syncLocation.client
+                                        })
+                                    });
+                            }
+                        })
+                        .then(resolve, function (err) {
+                            reject({
+                                type: offlineItemStates.created,
+                                items: resultingItemsForCreate,
+                                contentType: collectionName,
+                                error: err
+                            });
+                        });
+                });
 
             return resultingItemsForCreate;
         },
@@ -20131,8 +19534,8 @@ module.exports = (function () {
                     }));
                 });
             } else {
-                if (operation === DataQuery.operations.Update) {
-                    self._onItemProcessed(item, collectionName, syncLocation.server, offlineItemStates.modified);
+                if (operation === DataQuery.operations.update) {
+                    self._addSyncedItemToResult(item, collectionName, syncLocation.server, offlineItemStates.modified);
                     var updatedItem = _.extend({}, item, {
                         ModifiedAt: res.ModifiedAt
                     });
@@ -20150,21 +19553,15 @@ module.exports = (function () {
                     return this.processQuery(updateQuery)
                         .then(function () {
                             if (isCustomItem) {
-                                var existingItem = _.find(self._syncResultInfo.syncedItems[collectionName], function (syncedItem) {
-                                    return syncedItem.itemId === item.Id;
-                                });
-
-                                if (!existingItem) {
-                                    self._onItemProcessed(item, collectionName, syncLocation.client, offlineItemStates.modified);
-                                }
+                                self._addSyncedItemToResult(item, collectionName, syncLocation.client, offlineItemStates.modified);
                             }
                         });
-                } else if (operation === DataQuery.operations.Delete) {
-                    self._onItemProcessed(item, collectionName, syncLocation.server, offlineItemStates.deleted);
+                } else if (operation === DataQuery.operations.remove) {
+                    self._addSyncedItemToResult(item, collectionName, syncLocation.server, offlineItemStates.deleted);
                     return this._purgeById(collectionName, item.Id)
                         .then(function () {
                             if (isCustomItem) {
-                                self._onItemProcessed(item, collectionName, syncLocation.client, offlineItemStates.deleted);
+                                self._addSyncedItemToResult(item, collectionName, syncLocation.client, offlineItemStates.deleted);
                             }
                         });
                 }
@@ -20203,13 +19600,24 @@ module.exports = (function () {
                     var conflictsWhileSync = [];
                     _.each(syncResults, function (syncResult, itemId) {
                         if (syncResult && syncResult.state === 'rejected') {
+                            var targetType = syncResult.reason.contentType;
                             if (syncResult.reason && syncResult.reason.code === EverliveErrors.syncConflict.code) {
                                 conflictsWhileSync.push(syncResult);
                             } else {
                                 // to save time and traffic we are using a single create request for all items
                                 // this is why if there is an error we need to split the items we tried to create
                                 // and set the same error for all items.
-                                self._onItemFailed(syncResult, itemId);
+                                var type = syncResult.reason.type;
+                                self._syncResultInfo.failedItems[targetType] = self._syncResultInfo.failedItems[targetType] || [];
+                                if (type === offlineItemStates.created) {
+                                    _.each(syncResult.reason.items, function (item) {
+                                        self._syncResultInfo.failedItems[targetType]
+                                            .push(_.extend({itemId: item.Id}, _.pick(syncResult.reason, 'storage', 'type', 'error')));
+                                    });
+                                } else {
+                                    self._syncResultInfo.failedItems[targetType]
+                                        .push(_.extend({itemId: itemId}, _.pick(syncResult.reason, 'storage', 'type', 'error')));
+                                }
                             }
                         }
                     });
@@ -20226,7 +19634,7 @@ module.exports = (function () {
                 });
         },
 
-        _handleKeepServer: function (typeName, conflictingItem, offlineSyncOperations, contentTypeSyncData) {
+        _handleKeepServer: function (typeName, conflictingItem, offlineSyncOperations) {
             var self = this;
 
             var serverItem = conflictingItem.serverItem;
@@ -20236,7 +19644,7 @@ module.exports = (function () {
                 // update the item offline
                 syncQuery = new DataQuery({
                     collectionName: typeName,
-                    operation: DataQuery.operations.Update,
+                    operation: DataQuery.operations.update,
                     additionalOptions: {
                         id: serverItem.Id
                     },
@@ -20246,14 +19654,14 @@ module.exports = (function () {
                 // create item offline
                 syncQuery = new DataQuery({
                     collectionName: typeName,
-                    operation: DataQuery.operations.Create,
+                    operation: DataQuery.operations.create,
                     data: serverItem
                 });
             } else if (!serverItem && clientItem) {
                 // delete item offline
                 syncQuery = new DataQuery({
                     collectionName: typeName,
-                    operation: DataQuery.operations.DeleteById,
+                    operation: DataQuery.operations.removeSingle,
                     additionalOptions: {
                         id: clientItem.Id
                     }
@@ -20267,23 +19675,14 @@ module.exports = (function () {
                 self.processQuery(syncQuery)
                     .then(function () {
                         switch (syncQuery.operation) {
-                            case DataQuery.operations.Update:
-                                self._onItemProcessed(serverItem, typeName, syncLocation.client, offlineItemStates.modified);
-                                // the files content type is special and needs to enable the file contents offline, so we cannot only
-                                // update the data
-                                if (utils.isContentType.files(typeName)) {
-                                    contentTypeSyncData.modifiedItems.push({
-                                        remoteItem: conflictingItem.serverItem,
-                                        resultingItem: serverItem,
-                                        resolutionType: constants.ConflictResolution.KeepServer
-                                    });
-                                }
+                            case DataQuery.operations.update:
+                                self._addSyncedItemToResult(serverItem, typeName, syncLocation.client, offlineItemStates.modified);
                                 break;
-                            case DataQuery.operations.Create:
-                                self._onItemProcessed(serverItem, typeName, syncLocation.client, offlineItemStates.created);
+                            case DataQuery.operations.create:
+                                self._addSyncedItemToResult(serverItem, typeName, syncLocation.client, offlineItemStates.created);
                                 break;
-                            case DataQuery.operations.DeleteById:
-                                self._onItemProcessed(clientItem, typeName, syncLocation.client, offlineItemStates.deleted);
+                            case DataQuery.operations.removeSingle:
+                                self._addSyncedItemToResult(clientItem, typeName, syncLocation.client, offlineItemStates.deleted);
                                 break;
                         }
                         resolve();
@@ -20291,15 +19690,15 @@ module.exports = (function () {
                         var itemId;
                         var operation;
                         switch (syncQuery.operation) {
-                            case DataQuery.operations.Update:
+                            case DataQuery.operations.update:
                                 itemId = serverItem.Id;
                                 operation = offlineItemStates.modified;
                                 break;
-                            case DataQuery.operations.Create:
+                            case DataQuery.operations.create:
                                 itemId = serverItem.Id;
                                 operation = offlineItemStates.created;
                                 break;
-                            case DataQuery.operations.DeleteById:
+                            case DataQuery.operations.removeSingle:
                                 itemId = clientItem.Id;
                                 operation = offlineItemStates.deleted;
                                 break;
@@ -20319,27 +19718,26 @@ module.exports = (function () {
         _handleKeepClient: function (conflictingItem, contentTypeSyncData) {
             var serverItem = conflictingItem.serverItem;
             var clientItem = conflictingItem.clientItem;
-            var resultingItem;
-            var collection;
-
             if (serverItem && clientItem) {
-                resultingItem = _.extend(clientItem, {ModifiedAt: new Date(serverItem.ModifiedAt)});
-                collection = contentTypeSyncData.modifiedItems;
+                var modifiedObject = _.extend(clientItem, {ModifiedAt: new Date(serverItem.ModifiedAt)});
+
+                contentTypeSyncData.modifiedItems.push({
+                    remoteItem: conflictingItem.serverItem,
+                    resultingItem: modifiedObject
+                });
             } else if (serverItem && !clientItem) {
-                resultingItem = serverItem;
-                collection = contentTypeSyncData.deletedItems;
+                contentTypeSyncData.deletedItems.push({
+                    remoteItem: conflictingItem.serverItem,
+                    resultingItem: serverItem
+                });
             } else if (!serverItem && clientItem) {
-                resultingItem = clientItem;
-                collection = contentTypeSyncData.createdItems;
+                contentTypeSyncData.createdItems.push({
+                    remoteItem: conflictingItem.serverItem,
+                    resultingItem: clientItem
+                });
             } else {
                 throw new EverliveError('Both serverItem and clientItem are not set when syncing data with "KeepClient" resolution strategy.');
             }
-
-            collection.push({
-                remoteItem: conflictingItem.serverItem,
-                resultingItem: resultingItem,
-                resolutionType: constants.ConflictResolution.KeepClient
-            });
         },
 
         _handleCustom: function (conflictingItem, typeName, offlineSyncOperations, contentTypeSyncData) {
@@ -20349,7 +19747,7 @@ module.exports = (function () {
             if (serverItem && customItem) {
                 var createItemOfflineQuery = new DataQuery({
                     collectionName: typeName,
-                    operation: DataQuery.operations.Create,
+                    operation: DataQuery.operations.create,
                     data: serverItem // create the server item offline and it will be updated when sync finishes
                 });
 
@@ -20357,8 +19755,6 @@ module.exports = (function () {
                 createItemOfflineQuery.isSync = true;
 
                 offlineSyncOperations.push(this.processQuery(createItemOfflineQuery));
-
-                this._onItemProcessed(serverItem, typeName, syncLocation.client, offlineItemStates.created);
             }
 
             if (serverItem && customItem && !clientItem) {
@@ -20377,7 +19773,7 @@ module.exports = (function () {
             } else if (!serverItem && customItem && clientItem) {
                 var updateItemOfflineQuery = new DataQuery({
                     collectionName: typeName,
-                    operation: DataQuery.operations.Update,
+                    operation: DataQuery.operations.update,
                     data: customItem,
                     additionalOptions: {
                         id: clientItem.Id
@@ -20412,7 +19808,7 @@ module.exports = (function () {
                     var contentTypeSyncData = syncData[typeName];
                     switch (conflictingItem.result.resolutionType) {
                         case constants.ConflictResolution.KeepServer:
-                            self._handleKeepServer(typeName, conflictingItem, offlineSyncOperations, contentTypeSyncData);
+                            self._handleKeepServer(typeName, conflictingItem, offlineSyncOperations);
                             break;
                         case constants.ConflictResolution.KeepClient:
                             self._handleKeepClient(conflictingItem, contentTypeSyncData);
@@ -20453,28 +19849,15 @@ module.exports = (function () {
                 var serverItem = _.findWhere(serverItems, {Id: offlineItem.Id});
                 if (serverItem) {
                     if (serverItem.Id === offlineItem.Id && offlineItem[constants.offlineItemsStateMarker] === offlineItemStates.created) {
-                        if (self.setup.conflicts.strategy === constants.ConflictResolutionStrategy.Custom) {
-                            self._onItemFailed({
-                                type: offlineItemStates.modified,
-                                storage: syncLocation.client,
-                                error: new EverliveError(EverliveErrors.syncError),
-                                contentType: contentType
-                            }, offlineItem.Id);
+                        self._syncResultInfo.failedItems[contentType] = self._syncResultInfo.failedItems[contentType] || [];
+                        self._syncResultInfo.failedItems[contentType].push({
+                            itemId: serverItem.Id,
+                            type: offlineItemStates.created,
+                            storage: syncLocation.client,
+                            error: EverliveErrors.syncError
+                        });
 
-                            return self._onItemFailed({
-                                type: offlineItemStates.modified,
-                                storage: syncLocation.server,
-                                error: new EverliveError(EverliveErrors.syncError),
-                                contentType: contentType
-                            }, serverItem.Id);
-                        } else {
-                            return self._onItemFailed({
-                                type: offlineItemStates.created,
-                                storage: syncLocation.client,
-                                error: new EverliveError(EverliveErrors.syncError),
-                                contentType: contentType
-                            }, serverItem.Id);
-                        }
+                        return;
                     }
 
                     var clientItemChanged = !!offlineItem[constants.offlineItemsStateMarker];
@@ -20584,7 +19967,7 @@ module.exports = (function () {
                             '$in': batchIds
                         }
                     },
-                    operation: DataQuery.operations.Read,
+                    operation: DataQuery.operations.read,
                     onSuccess: function (res) {
                         resolve(res.result);
                     },
@@ -20644,58 +20027,19 @@ module.exports = (function () {
                 });
         },
 
-        _onItemFailed: function (syncResult, itemId) {
-            var self = this;
-
-            var results = syncResult.reason ? syncResult.reason : syncResult;
-            var targetType = results.contentType;
-
-            var getFailedItem = function (id) {
-                var pickedObject = _.pick(results, 'storage', 'type', 'error');
-                return _.extend({
-                    itemId: id,
-                    contentType: targetType
-                }, pickedObject);
-            };
-
-            var failedItems = [];
-            if (results.type === offlineItemStates.created && results.items) {
-                failedItems = _.map(results.items, function (item) {
-                    return getFailedItem(item.Id);
-                });
-            } else {
-                failedItems.push(getFailedItem(itemId));
+        _addSyncedItemToResult: function (item, contentType, syncStorage, syncType) {
+            if (!this._syncResultInfo.syncedItems[contentType]) {
+                this._syncResultInfo.syncedItems[contentType] = [];
             }
 
-            self._syncResultInfo.failedItems[targetType] = self._syncResultInfo.failedItems[targetType] || [];
-            _.each(failedItems, function (failedItem) {
-                self._syncResultInfo.failedItems[targetType].push(failedItem);
-                self._fireItemProcessed(failedItem);
-            });
-        },
-
-        _onItemProcessed: function (item, contentType, syncStorage, syncType) {
             var syncInfo = {
                 itemId: item.Id,
                 type: syncType,
-                storage: syncStorage,
-                contentType: contentType
+                storage: syncStorage
             };
-
-            this._syncResultInfo.syncedItems[contentType] = this._syncResultInfo.syncedItems[contentType] || [];
             this._syncResultInfo.syncedItems[contentType].push(syncInfo);
 
-            if (syncInfo.storage == syncLocation.server) {
-                this._syncResultInfo.syncedToServer++;
-            } else {
-                this._syncResultInfo.syncedToClient++;
-            }
-
-            this._fireItemProcessed(syncInfo);
-        },
-
-        _fireItemProcessed: function (syncInfo) {
-            this._everlive._emitter.emit(constants.Events.ItemProcessed, syncInfo);
+            this._everlive._emitter.emit('itemSynced', syncInfo);
         },
 
         _getClientWinsSyncData: function (collections) {
@@ -20796,7 +20140,7 @@ module.exports = (function () {
                     .then(function (onlineResponse) {
                         var onlineResult = onlineResponse.result;
                         item.ModifiedAt = onlineResult.ModifiedAt;
-                        self._onItemProcessed(item, collectionName, syncLocation.server, offlineItemStates.modified);
+                        self._addSyncedItemToResult(item, collectionName, syncLocation.server, offlineItemStates.modified);
                         return sdk.files
                             .isSync(true)
                             .useOffline(true)
@@ -20824,13 +20168,13 @@ module.exports = (function () {
                     .applyOffline(false)
                     .updateSingle(item)
                     .then(function (res) {
-                        self._onItemProcessed(item, collectionName, syncLocation.server, offlineItemStates.modified);
+                        self._addSyncedItemToResult(item, collectionName, syncLocation.server, offlineItemStates.modified);
                         var updatedItem = _.extend({}, item, {
                             ModifiedAt: res.ModifiedAt
                         });
 
                         var updateQuery = new DataQuery({
-                            operation: DataQuery.operations.Update,
+                            operation: DataQuery.operations.update,
                             data: updatedItem,
                             additionalOptions: {
                                 id: item.Id
@@ -20896,7 +20240,7 @@ module.exports = (function () {
                             .applyOffline(false)
                             .destroySingle(itemFilter)
                             .then(function () {
-                                self._onItemProcessed(item, collectionName, syncLocation.server, offlineItemStates.deleted);
+                                self._addSyncedItemToResult(item, collectionName, syncLocation.server, offlineItemStates.deleted);
                                 return self._purgeById(collectionName, item.Id).then(function () {
                                     resolve();
                                 }, function (err) {
@@ -20944,77 +20288,6 @@ module.exports = (function () {
             return rsvp.hashSettled(syncPromises);
         },
 
-        _modifyFileStandardSync: function (syncPromises, itemId, item, collectionName, resolutionType) {
-            var self = this;
-
-            var filesCollection = self._everlive.files;
-            syncPromises[itemId] = new rsvp.Promise(function (resolve, reject) {
-                var offlineLocation;
-                self.files.getOfflineLocation(itemId)
-                    .then(function (locationOnDisk) {
-                        offlineLocation = locationOnDisk;
-                    })
-                    .then(function () {
-                        return filesCollection
-                            .isSync(true)
-                            .applyOffline(false)
-                            .getById(itemId);
-                    })
-                    .then(function (response) {
-                        var file = response.result;
-                        if (file.ModifiedAt.getTime() !== item.ModifiedAt.getTime()) {
-                            reject(_.extend({}, new EverliveError(EverliveErrors.syncConflict), {
-                                contentType: collectionName
-                            }));
-                        } else {
-                            if (offlineLocation) {
-                                if (resolutionType === constants.ConflictResolution.KeepServer) {
-                                    return self.files._saveFile(item.Uri, item.Filename, item.Id)
-                                        .then(function () {
-                                            return self._offlineFilesProcessor.purge(offlineLocation);
-                                        })
-                                        .then(function () {
-                                            return response;
-                                        });
-                                } else if (resolutionType === constants.ConflictResolution.KeepClient) {
-                                    return self._transferFile(true, item, offlineLocation);
-                                }
-                            }
-                        }
-                    })
-                    .then(function () {
-                        return self._everlive.files
-                            .isSync(true)
-                            .useOffline(true)
-                            .updateSingle(item);
-                    })
-                    .then(resolve)
-                    .catch(reject);
-            });
-        },
-
-        _modifyContentTypeStandardSync: function (syncPromises, itemId, dataCollection, item, itemFilter, collectionName, isCustom) {
-            var self = this;
-
-            syncPromises[itemId] = dataCollection
-                .isSync(true)
-                .applyOffline(false)
-                .update(item, itemFilter)
-                .then(function (res) {
-                    return self._onSyncResponse(res, item, collectionName, DataQuery.operations.Update, isCustom);
-                }, function (err) {
-                    return new rsvp.Promise(function (resolve, reject) {
-                        reject({
-                            type: offlineItemStates.modified,
-                            itemId: item.Id,
-                            contentType: collectionName,
-                            error: err,
-                            storage: syncLocation.server
-                        });
-                    });
-                });
-        },
-
         _applyStandardSync: function (collections) {
             var self = this;
 
@@ -21039,13 +20312,58 @@ module.exports = (function () {
                         }
 
                         if (contentTypeData.modifiedItems.length) {
-                            self._addUpdatedItemsForSync(contentTypeData, getSyncFilterForItem, syncPromises, dataCollection, function (item, itemFilter, isCustom, resolutionType) {
+                            self._addUpdatedItemsForSync(contentTypeData, getSyncFilterForItem, syncPromises, dataCollection, function (item, itemFilter, isCustom) {
                                 var itemId = item.Id;
 
                                 if (utils.isContentType.files(collectionName)) {
-                                    self._modifyFileStandardSync(syncPromises, itemId, item, collectionName, resolutionType, isCustom);
+                                    var filesCollection = self._everlive.files;
+                                    syncPromises[itemId] = new rsvp.Promise(function (resolve, reject) {
+                                        var offlineLocation;
+                                        self.files.getOfflineLocation(itemId)
+                                            .then(function (locationOnDisk) {
+                                                offlineLocation = locationOnDisk;
+                                            })
+                                            .then(function () {
+                                                return filesCollection
+                                                    .isSync(true)
+                                                    .applyOffline(false)
+                                                    .getById(itemId);
+                                            })
+                                            .then(function (response) {
+                                                var file = response.result;
+                                                if (file.ModifiedAt.getTime() !== item.ModifiedAt.getTime()) {
+                                                    reject(_.extend({}, EverliveErrors.syncConflict, {
+                                                        contentType: collectionName
+                                                    }));
+                                                } else {
+                                                    if (offlineLocation) {
+                                                        return self._transferFile(true, item, offlineLocation);
+                                                    } else {
+                                                        return filesCollection.isSync(true).updateSingle(item);
+                                                    }
+                                                }
+                                            })
+                                            .then(resolve)
+                                            .catch(reject);
+                                    });
                                 } else {
-                                    self._modifyContentTypeStandardSync(syncPromises, itemId, dataCollection, item, itemFilter, collectionName, isCustom);
+                                    syncPromises[itemId] = dataCollection
+                                        .isSync(true)
+                                        .applyOffline(false)
+                                        .update(item, itemFilter)
+                                        .then(function (res) {
+                                            return self._onSyncResponse(res, item, collectionName, DataQuery.operations.update, isCustom);
+                                        }, function (err) {
+                                            return new rsvp.Promise(function (resolve, reject) {
+                                                reject({
+                                                    type: offlineItemStates.modified,
+                                                    itemId: item.Id,
+                                                    contentType: collectionName,
+                                                    error: err,
+                                                    storage: syncLocation.server
+                                                });
+                                            });
+                                        });
                                 }
                             });
                         }
@@ -21057,7 +20375,7 @@ module.exports = (function () {
                                     .applyOffline(false)
                                     .destroy(itemFilter)
                                     .then(function (res) {
-                                        return self._onSyncResponse(res, item, collectionName, DataQuery.operations.Delete, isCustom);
+                                        return self._onSyncResponse(res, item, collectionName, DataQuery.operations.remove, isCustom);
                                     }, function (err) {
                                         return new rsvp.Promise(function (resolve, reject) {
                                             reject({
@@ -21103,7 +20421,7 @@ module.exports = (function () {
          * @method getItemsForSync
          * @name getItemsForSync
          * @memberOf OfflineModule.prototype
-         * @returns {Promise}
+         * @returns Promise
          */
         getItemsForSync: function (success, error) {
             var self = this;
@@ -21133,11 +20451,11 @@ module.exports = (function () {
     return OfflineModule;
 })();
 
-},{"../EverliveError":47,"../Request":52,"../common":58,"../constants":59,"../query/DataQuery":85,"../query/RequestOptionsBuilder":89,"../utils":100,"./OfflineFilesModule":72,"./OfflineFilesProcessor":73,"./OfflineQueryProcessor":74,"./offlineTransformations":78,"path":3}],76:[function(require,module,exports){
+},{"../EverliveError":44,"../Request":49,"../common":53,"../constants":54,"../query/DataQuery":73,"../query/RequestOptionsBuilder":76,"../utils":87,"./OfflineFilesModule":63,"./OfflineFilesProcessor":64,"./OfflineQueryProcessor":65,"./offlineTransformations":69,"path":4}],67:[function(require,module,exports){
 var constants = require('../constants');
-var persisters = require('./offlinePersisters');
-var LocalStoragePersister = persisters.LocalStoragePersister;
-var FileSystemPersister = persisters.FileSystemPersister;
+var persistersModule = require('./offlinePersisters');
+var LocalStoragePersister = persistersModule.LocalStoragePersister;
+var FileSystemPersister = persistersModule.FileSystemPersister;
 var OfflineStorageModule = require('./OfflineStorageModule');
 var EverliveError = require('../EverliveError').EverliveError;
 var isNativeScript = require('../everlive.platform').isNativeScript;
@@ -21168,8 +20486,7 @@ var defaultOfflineStorageOptions = {
     },
     files: {
         storagePath: constants.DefaultFilesStoragePath,
-        metaPath: constants.DefaultFilesMetadataPath,
-        maxConcurrentDownloads: constants.MaxConcurrentDownloadTasks
+        metaPath: constants.DefaultFilesMetadataPath
     }
 };
 
@@ -21190,8 +20507,27 @@ module.exports = (function () {
     };
 
     var initStoragePersister = function initStoragePersister(options) {
-        var storageKey = options.storage.name || 'everliveOfflineStorage_' + this.setup.appId;
-        var persister = persisters.getPersister(storageKey, options);
+        var persister;
+        var storageProvider = options.storage.provider;
+        var storageProviderImplementation = options.storage.implementation;
+        var storageKey = options.storage.name || 'everliveOfflineStorage_' + this.setup.apiKey;
+        if (_.isObject(storageProviderImplementation) && storageProvider === constants.StorageProvider.Custom) {
+            persister = storageProviderImplementation;
+        } else {
+            switch (storageProvider) {
+                case constants.StorageProvider.LocalStorage:
+                    persister = new LocalStoragePersister(storageKey, options);
+                    break;
+                case constants.StorageProvider.FileSystem:
+                    persister = new FileSystemPersister(storageKey, options);
+                    break;
+                case constants.StorageProvider.Custom:
+                    throw new EverliveError('Custom storage provider requires an implementation object');
+                default:
+                    throw new EverliveError('Unsupported storage type ' + storageProvider);
+            }
+        }
+
         options.storage.implementation = persister;
         return persister;
     };
@@ -21218,8 +20554,7 @@ module.exports = (function () {
         return encryptor;
     };
 
-    function buildOfflineStorageOptions(sdkOptions) {
-        var storageOptions = sdkOptions.offline || sdkOptions.offlineStorage;
+    var buildOfflineStorageModule = function buildOfflineStorageModule(storageOptions) {
         var options;
         if (storageOptions === true) { // explicit check for shorthand initialization
             options = _.defaults({}, defaultOfflineStorageOptions);
@@ -21228,74 +20563,38 @@ module.exports = (function () {
             options.storage = _.defaults(storageOptions.storage, defaultOfflineStorageOptions.storage);
             options.encryption = _.defaults(storageOptions.encryption, defaultOfflineStorageOptions.encryption);
             options.conflicts = _.defaults(storageOptions.conflicts, defaultOfflineStorageOptions.conflicts);
-            options.files = _.defaults(storageOptions.files, defaultOfflineStorageOptions.files);
         } else {
             options = _.defaults({}, defaultOfflineStorageOptions);
             options.enabled = false;
-            if (!storageOptions) {
-                sdkOptions.offlineStorage = options;
-            }
         }
 
-        options.cacheEnabled = sdkOptions.caching && sdkOptions.caching.enabled;
-        return options;
-    }
-
-    var buildOfflineStorageModule = function buildOfflineStorageModule(sdkOptions) {
-        var options = buildOfflineStorageOptions(sdkOptions);
-        var persister = initStoragePersister.call(this, options);
-        var encryptionProvider = initEncryptionProvider.call(this, options);
+        if (options.enabled) {
+            var persister = initStoragePersister.call(this, options, storageOptions);
+            var encryptionProvider = initEncryptionProvider.call(this, options);
+        }
 
         return new OfflineStorageModule(this, options, persister, encryptionProvider);
     };
 
     var initOfflineStorage = function (options) {
-        this.offlineStorage = buildOfflineStorageModule.call(this, options);
+        this.offlineStorage = buildOfflineStorageModule.call(this, options.offlineStorage);
     };
 
     return {
-        initOfflineStorage: initOfflineStorage,
-        buildOfflineStorageOptions: buildOfflineStorageOptions
+        initOfflineStorage: initOfflineStorage
     }
 }());
-},{"../EverliveError":47,"../common":58,"../constants":59,"../encryption/CryptographicProvider":60,"../everlive.platform":61,"./OfflineStorageModule":75,"./offlinePersisters":77}],77:[function(require,module,exports){
+},{"../EverliveError":44,"../common":53,"../constants":54,"../encryption/CryptographicProvider":55,"../everlive.platform":56,"./OfflineStorageModule":66,"./offlinePersisters":68}],68:[function(require,module,exports){
 var BasePersister = require('./persisters/BasePersister');
 var LocalStoragePersister = require('./persisters/LocalStoragePersister');
 var FileSystemPersister = require('./persisters/FileSystemPersister');
-var constants = require('../constants');
-var EverliveError = require('../EverliveError').EverliveError;
-var _ = require('../common')._;
 
 module.exports = {
     BasePersister: BasePersister,
     LocalStoragePersister: LocalStoragePersister,
-    FileSystemPersister: FileSystemPersister,
-    getPersister: function (storageKey, options) {
-        var persister;
-
-        var storageProvider = options.storage.provider;
-        var storageProviderImplementation = options.storage.implementation;
-        if (_.isObject(storageProviderImplementation) && storageProvider === constants.StorageProvider.Custom) {
-            persister = storageProviderImplementation;
-        } else {
-            switch (storageProvider) {
-                case constants.StorageProvider.LocalStorage:
-                    persister = new LocalStoragePersister(storageKey, options);
-                    break;
-                case constants.StorageProvider.FileSystem:
-                    persister = new FileSystemPersister(storageKey, options);
-                    break;
-                case constants.StorageProvider.Custom:
-                    throw new EverliveError('Custom storage provider requires an implementation object');
-                default:
-                    throw new EverliveError('Unsupported storage type ' + storageProvider);
-            }
-        }
-
-        return persister;
-    }
+    FileSystemPersister: FileSystemPersister
 };
-},{"../EverliveError":47,"../common":58,"../constants":59,"./persisters/BasePersister":79,"./persisters/FileSystemPersister":80,"./persisters/LocalStoragePersister":81}],78:[function(require,module,exports){
+},{"./persisters/BasePersister":70,"./persisters/FileSystemPersister":71,"./persisters/LocalStoragePersister":72}],69:[function(require,module,exports){
 'use strict';
 
 var constants = require('../constants');
@@ -21379,7 +20678,7 @@ var offlineTransformations = {
 };
 
 module.exports = offlineTransformations;
-},{"../common":58,"../constants":59}],79:[function(require,module,exports){
+},{"../common":53,"../constants":54}],70:[function(require,module,exports){
 'use strict';
 
 var EverliveError = require('../../EverliveError').EverliveError;
@@ -21489,7 +20788,7 @@ var BasePersister = (function () {
 }());
 
 module.exports = BasePersister;
-},{"../../EverliveError":47,"../../common":58,"../../utils":100}],80:[function(require,module,exports){
+},{"../../EverliveError":44,"../../common":53,"../../utils":87}],71:[function(require,module,exports){
 'use strict';
 
 var FileStore = require('../../storages/FileStore');
@@ -21616,7 +20915,7 @@ var FileSystemPersister = (function () {
 }());
 
 module.exports = FileSystemPersister;
-},{"../../EverliveError":47,"../../common":58,"../../everlive.platform":61,"../../storages/FileStore":93,"../../utils":100,"./BasePersister":79,"path":3,"util":6}],81:[function(require,module,exports){
+},{"../../EverliveError":44,"../../common":53,"../../everlive.platform":56,"../../storages/FileStore":80,"../../utils":87,"./BasePersister":70,"path":4,"util":7}],72:[function(require,module,exports){
 'use strict';
 
 var common = require('../../common');
@@ -21660,16 +20959,10 @@ var LocalStoragePersister = (function () {
     };
 
     LocalStoragePersister.prototype.purge = function (contentType, success, error) {
-        var self = this;
-
         try {
             var key = this._getKey(contentType);
             this._removeItem(key);
-            this._getContentTypes(function (contentTypes) {
-                contentTypes = _.without(contentTypes, contentType);
-                self._setContentTypesCollection(contentTypes);
-                success();
-            }, error);
+            success();
         } catch (e) {
             error(e);
         }
@@ -21743,1219 +21036,8 @@ var LocalStoragePersister = (function () {
 }());
 
 module.exports = LocalStoragePersister;
-},{"../../common":58,"../../storages/LocalStore":94,"./BasePersister":79,"util":6}],82:[function(require,module,exports){
-var buildPromise = require('../utils').buildPromise;
-var EverliveError = require('../EverliveError').EverliveError;
-var Platform = require('../constants').Platform;
-var common = require('../common');
-var jstz = common.jstz;
-var _ = common._;
-var utils = require('../utils');
-
-module.exports = (function () {
-    /**
-     * @class CurrentDevice
-     * @deprecated
-     * @protected
-     * @param pushHandler
-     * @constructor
-     */
-    var CurrentDevice = function (pushHandler) {
-
-        if (!window.cordova) {
-                throw new EverliveError('Error: currentDevice() can only be called from within a hybrid mobile app, after \'deviceready\' event has been fired.');
-        }
-
-        this._pushHandler = pushHandler;
-        this._initSuccessCallback = null;
-        this._initErrorCallback = null;
-
-        //Suffix for the global callback functions
-        this._globalFunctionSuffix = null;
-
-        this.pushSettings = null;
-        this.pushToken = null;
-        this.isInitialized = false;
-        this.isInitializing = false;
-
-        this.emulatorMode = false;
-    };
-
-    CurrentDevice.ensurePushIsAvailable = function() {
-        var isPushNotificationPluginAvailable = (typeof window !== 'undefined' && window.plugins && window.plugins.pushNotification);
-
-        if (!isPushNotificationPluginAvailable && !utils._inAppBuilderSimulator()) {
-            throw new EverliveError('The push notification plugin is not available. Ensure that the pushNotification plugin is included ' +
-            'and use after `deviceready` event has been fired.');
-        }
-    };
-
-    CurrentDevice.prototype = {
-
-        /**
-         * Initializes the current device for push notifications. This method requests a push token from the device vendor and enables the push notification functionality on the device. Once this is done, you can register the device in {{site.TelerikBackendServices}} using the register() method.
-         * @method enableNotifications
-         * @name enableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @param {PushSettings} pushSettings An object specifying various settings for the initialization.
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Initializes the current device for push notifications. This method requests a push token from the device vendor and enables the push notification functionality on the device. Once this is done, you can register the device in Everlive using the register() method.
-         * @method enableNotifications
-         * @name enableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @param {PushSettings} pushSettings An object specifying various settings for the initialization.
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        enableNotifications: function (pushSettings, success, error) {
-            this.pushSettings = this._cleanPlatformsPushSettings(pushSettings);
-
-            return buildPromise(_.bind(this._initialize, this), success, error);
-        },
-
-        /**
-         * Disables push notifications for the current device. This method invalidates any push tokens that were obtained for the device from the current application.
-         * @method disableNotifications
-         * @name disableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Disables push notifications for the current device. This method invalidates any push tokens that were obtained for the device from the current application.
-         * @method disableNotifications
-         * @name disableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        disableNotifications: function (success, error) {
-            var self = this;
-
-            return this.unregister().then(
-                function () {
-                    return buildPromise(
-                        function (success, error) {
-                            if (self.emulatorMode) {
-                                success();
-                            } else {
-                                var pushNotification = window.plugins.pushNotification;
-                                var unregisterOptions;
-                                var platformType = self._getPlatformType();
-                                if (platformType === Platform.WindowsPhone) {
-                                    unregisterOptions = {'channelName': self.pushSettings.wp8.channelName};
-                                }
-                                pushNotification.unregister(
-                                    function () {
-                                        self.isInitialized = false;
-                                        success();
-                                    },
-                                    error,
-                                    unregisterOptions
-                                );
-                            }
-                        },
-                        success,
-                        error
-                    );
-                },
-                error
-            );
-        },
-
-        /**
-         * Returns the push registration for the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method getRegistration
-         * @name getRegistration
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Returns the push registration for the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method getRegistration
-         * @name getRegistration
-         * @param {Function} success Callback to invoke on success.
-         * @param {Function} error Callback to invoke on error.
-         */
-        getRegistration: function (success, error) {
-            var deviceId = encodeURIComponent(this._getDeviceId());
-            return this._pushHandler.devices.getById('HardwareId/' + deviceId, success, error);
-        },
-
-        /**
-         * Registers the current device for push notifications in {{site.TelerikBackendServices}}. This method can be called only after [enableNotifications()]{@link currentDevice.enableNotifications} has completed successfully.
-         * @memberOf CurrentDevice.prototype
-         * @method register
-         * @name register
-         * @param {Object} customParameters Custom parameters for the registration.
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Registers the current device for push notifications in {{site.TelerikBackendServices}}. This method can be called only after [enableNotifications()]{@link currentDevice.enableNotifications} has completed successfully.
-         * @memberOf CurrentDevice.prototype
-         * @method register
-         * @name register
-         * @param {Object} customParameters Custom parameters for the registration.
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        register: function (customParameters, success, error) {
-            var self = this;
-
-            var deviceRegistration = {};
-            if (customParameters !== undefined) {
-                deviceRegistration.Parameters = customParameters;
-            }
-
-            return this._populateRegistrationObject(deviceRegistration).then(
-                function () {
-                    return self._pushHandler.devices.create(deviceRegistration, success, error);
-                },
-                error
-            );
-        },
-
-        /**
-         * Unregisters the current device from push notifications in {{site.TelerikBackendServices}}. After this call completes successfully, {{site.bs}} will no longer send notifications to this device. Note that this does not prevent the device from receiving notifications and does not invalidate push tokens.
-         * @memberOf CurrentDevice.prototype
-         * @method unregister
-         * @name unregister
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Unregisters the current device from push notifications in {{site.TelerikBackendServices}}. After this call completes successfully, {{site.bs}} will no longer send notifications to this device. Note that this does not prevent the device from receiving notifications and does not invalidate push tokens.
-         * @memberOf CurrentDevice.prototype
-         * @method unregister
-         * @name unregister
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        unregister: function (success, error) {
-            var deviceId = encodeURIComponent(device.uuid);
-            return this._pushHandler.devices.destroySingle({Id: 'HardwareId/' + deviceId}, success, error);
-        },
-
-        /**
-         * Updates the registration of the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method updateRegistration
-         * @name updateRegistration
-         * @param {Object} customParameters Custom parameters for the registration. If undefined, customParameters are not updated.
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Updates the registration for the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method updateRegistration
-         * @name updateRegistration
-         * @param {Object} customParameters Custom parameters for the registration. If undefined, customParameters are not updated.
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        updateRegistration: function (customParameters, success, error) {
-            var self = this;
-
-            var deviceRegistration = {};
-            if (customParameters !== undefined) {
-                deviceRegistration.Parameters = customParameters;
-            }
-
-            return this._populateRegistrationObject(deviceRegistration).then(
-                function () {
-                    deviceRegistration.Id = 'HardwareId/' + encodeURIComponent(deviceRegistration.HardwareId);
-                    return self._pushHandler.devices.updateSingle(deviceRegistration, success, error);
-                },
-                error
-            );
-        },
-
-        /**
-         * This method provides a different operation on each supported platform:
-         *
-         * - On iOS: Checks if Notifications is enabled for this application in the device's Notification Center.
-         * - On Windows Phone: Checks if the application has an active open channel for communication with the Microsoft Push Notification Service. The outcome does not depend on the device's notification settings.
-         * - On Android: Checks if the application has established a connection with Google Cloud Messaging. The outcome does not depend on the device's notification settings.
-         * @method areNotificationsEnabled
-         * @name areNotificationsEnabled
-         * @memberOf Push.prototype
-         * @param {Object} options An object passed to the Push Notification plugin's areNotificationsEnabled method
-         * @returns {Promise} The promise for the request.
-         */
-        /**
-         * iOS: Checks if the Notifications are enabled for this Application in the Device's Notification Center.
-         * Windows Phone: Checks if the Application has an active opened Channel for communication with the Notification Service. Not relying on the device notification settings.
-         * Android: Checks if the Application has established connection with the Notification Service. Not relying on the device notification settings.
-         * @method areNotificationsEnabled
-         * @name areNotificationsEnabled
-         * @memberOf Push.prototype
-         * @param {Object} options an object passed to the Push Notification plugin's areNotificationsEnabled method.
-         * @param {Function} [onSuccess] Callback to invoke on successful check. Passes a single boolean value: true or false.
-         * @param {Function} [onError] Callback to invoke when an error in the push plugin has occurred.
-         */
-        areNotificationsEnabled: function (options, onSuccess, onError) {
-            options = options || {};
-            var pushNotification = window.plugins.pushNotification;
-
-            return buildPromise(function (successCb, errorCb) {
-                pushNotification.areNotificationsEnabled(successCb, errorCb, options);
-            }, onSuccess, onError);
-        },
-
-        _initializeInteractivePush: function (iOSSettings, success, error) {
-            var pushPlugin = window.plugins.pushNotification;
-
-            var interactiveSettings = iOSSettings.interactiveSettings;
-            var notificationTypes = [];
-            if (iOSSettings.alert) {
-                notificationTypes.push(pushPlugin.UserNotificationTypes.Alert);
-            }
-            if (iOSSettings.badge) {
-                notificationTypes.push(pushPlugin.UserNotificationTypes.Badge);
-            }
-            if (iOSSettings.sound) {
-                notificationTypes.push(pushPlugin.UserNotificationTypes.Sound);
-            }
-
-            var getAction = function (actionIdentifier) {
-                var action = _.find(interactiveSettings.actions, function (action) {
-                    return action.identifier === actionIdentifier;
-                });
-
-                return action;
-            };
-            var categories = _.map(interactiveSettings.categories, function (category) {
-                return {
-                    identifier: category.identifier,
-                    actionsForDefaultContext: _.map(category.actionsForDefaultContext, getAction),
-                    actionsForMinimalContext: _.map(category.actionsForMinimalContext, getAction)
-                }
-            });
-
-            pushPlugin.registerUserNotificationSettings(
-                // the success callback which will immediately return (APNs is not contacted for this)
-                success,
-                // called in case the configuration is incorrect
-                error, {
-                    // asking permission for these features
-                    types: notificationTypes,
-                    // register these categories
-                    categories: categories
-                }
-            );
-        },
-
-        //Initializes the push functionality on the device.
-        _initialize: function (success, error) {
-            var self = this;
-
-            if (this.isInitializing) {
-                error(new EverliveError('Push notifications are currently initializing.'));
-                return;
-            }
-
-            if (!this.emulatorMode && (!window.navigator || !window.navigator.globalization)) {
-                error(new EverliveError('The globalization plugin is not initialized.'));
-                return;
-            }
-
-            if (!this.emulatorMode && (!window.plugins || !window.plugins.pushNotification)) {
-                error(new EverliveError('The push notifications plugin is not initialized.'));
-                return;
-            }
-
-            this._initSuccessCallback = success;
-            this._initErrorCallback = error;
-
-            if (this.isInitialized) {
-                this._deviceRegistrationSuccess(this.pushToken);
-                return;
-            }
-
-            if (this.emulatorMode) {
-                setTimeout(
-                    function () {
-                        self._deviceRegistrationSuccess('fake_push_token');
-                    },
-                    1000
-                );
-                return;
-            }
-
-            this.isInitializing = true;
-
-            var suffix = this._globalFunctionSuffix;
-            if (!suffix) {
-                suffix = Date.now().toString();
-                this._globalFunctionSuffix = suffix;
-            }
-
-            var pushNotification = window.plugins.pushNotification;
-
-            var platformType = this._getPlatformType();
-            if (platformType === Platform.iOS) {
-                //Initialize global APN callback
-                var apnCallbackName = 'apnCallback_' + suffix;
-                Everlive.PushCallbacks[apnCallbackName] = _.bind(this._onNotificationAPN, this);
-
-                //Construct registration options object and validate iOS settings
-                var apnRegistrationOptions = this.pushSettings.iOS;
-                apnRegistrationOptions.ecb = 'Everlive.PushCallbacks.' + apnCallbackName;
-
-                //Register for APN
-                pushNotification.register(
-                    _.bind(this._successfulRegistrationAPN, this),
-                    _.bind(this._failedRegistrationAPN, this),
-                    apnRegistrationOptions
-                );
-            } else if (platformType === Platform.Android) {
-                //Initialize global GCM callback
-                var gcmCallbackName = 'gcmCallback_' + suffix;
-                Everlive.PushCallbacks[gcmCallbackName] = _.bind(this._onNotificationGCM, this);
-
-                //Construct registration options object and validate the Android settings
-                var gcmRegistrationOptions = this.pushSettings.android;
-                this._validateAndroidSettings(gcmRegistrationOptions);
-                gcmRegistrationOptions.ecb = 'Everlive.PushCallbacks.' + gcmCallbackName;
-
-                //Register for GCM
-                pushNotification.register(
-                    _.bind(this._successSentRegistrationGCM, this),
-                    _.bind(this._errorSentRegistrationGCM, this),
-                    gcmRegistrationOptions
-                );
-            } else if (platformType === Platform.WindowsPhone) {
-                //Initialize global WP8 callbacks.
-                var wp8CallbackName = 'wp8Callback_' + suffix;
-                var wp8RegistrationSuccessCallbackName = 'wp8RegistrationSuccessCallback_' + suffix;
-                var wp8RegistrationErrorCallbackName = 'wp8RegistrationErrorCallback_' + suffix;
-
-                Everlive.PushCallbacks[wp8CallbackName] = _.bind(this._onNotificationWP8, this);
-                Everlive.PushCallbacks[wp8RegistrationSuccessCallbackName] = _.bind(this._deviceRegistrationSuccessWP, this);
-                Everlive.PushCallbacks[wp8RegistrationErrorCallbackName] = _.bind(this._deviceRegistrationFailed, this);
-
-                //Construct registration options object and validate the WP8  settings
-                var wp8RegistrationOptions = this.pushSettings.wp8;
-                this._validateWP8Settings(wp8RegistrationOptions);
-                wp8RegistrationOptions.ecb = 'Everlive.PushCallbacks.' + wp8CallbackName;
-                wp8RegistrationOptions.uccb = 'Everlive.PushCallbacks.' + wp8RegistrationSuccessCallbackName;
-                wp8RegistrationOptions.errcb = 'Everlive.PushCallbacks.' + wp8RegistrationErrorCallbackName;
-
-
-                pushNotification.register(
-                    _.bind(this._successSentRegistrationWP8, this),
-                    _.bind(this._errorSentRegistrationWP8, this),
-                    wp8RegistrationOptions
-                );
-
-            } else {
-                throw new EverliveError('The current platform is not supported: ' + device.platform);
-            }
-        },
-
-        _deviceRegistrationSuccessWP: function (result) {
-            this._deviceRegistrationSuccess(result.uri);
-        },
-
-        _validateAndroidSettings: function (androidSettings) {
-            if (!androidSettings.senderID) {
-                throw new EverliveError('Sender ID (project number) is not set in the android settings.');
-            }
-        },
-
-        _validateWP8Settings: function (settings) {
-            if (!settings.channelName) {
-                throw new EverliveError('channelName is not set in the WP8 settings.');
-            }
-        },
-
-        _cleanPlatformsPushSettings: function (pushSettings) {
-            var cleanSettings = {};
-            pushSettings = pushSettings || {};
-
-            var addSettingsForPlatform = function addSettingsForPlatform(newSettingsObject, platform, allowedFields) {
-                if (!pushSettings[platform]) {
-                    return;
-                }
-
-                newSettingsObject[platform] = newSettingsObject[platform] || {};
-                var newPlatformSettings = pushSettings[platform];
-                var settings = newSettingsObject[platform];
-                _.each(allowedFields, function (allowedField) {
-                    if (newPlatformSettings.hasOwnProperty(allowedField)) {
-                        settings[allowedField] = newPlatformSettings[allowedField];
-                    }
-                });
-            };
-
-            addSettingsForPlatform(cleanSettings, 'iOS', ['badge', 'sound', 'alert', 'interactiveSettings']);
-            addSettingsForPlatform(cleanSettings, 'android', ['senderID', 'projectNumber']);
-            addSettingsForPlatform(cleanSettings, 'wp8', ['channelName']);
-
-            var callbackFields = ['notificationCallbackAndroid', 'notificationCallbackIOS', 'notificationCallbackWP8'];
-            _.each(callbackFields, function (callbackField) {
-                var callback = pushSettings[callbackField];
-                if (callback) {
-                    if (typeof callback !== 'function') {
-                        throw new EverliveError('The "' + callbackField + '" of the push settings should be a function');
-                    }
-
-                    cleanSettings[callbackField] = pushSettings[callbackField];
-                }
-            });
-
-            if (pushSettings.customParameters) {
-                cleanSettings.customParameters = pushSettings.customParameters;
-            }
-
-            return cleanSettings;
-        },
-
-        _populateRegistrationObject: function (deviceRegistration, success, error) {
-            var self = this;
-
-            return buildPromise(
-                function (success, error) {
-                    if (!self.pushToken) {
-                        throw new EverliveError('Push token is not available.');
-                    }
-
-                    self._getLocaleName(
-                        function (locale) {
-                            var deviceId = self._getDeviceId();
-                            var hardwareModel = device.model;
-                            var platformType = self._getPlatformType();
-                            var timeZone = jstz.determine().name();
-                            var pushToken = self.pushToken;
-                            var language = locale.value;
-                            var platformVersion = device.version;
-
-                            deviceRegistration.HardwareId = deviceId;
-                            deviceRegistration.HardwareModel = hardwareModel;
-                            deviceRegistration.PlatformType = platformType;
-                            deviceRegistration.PlatformVersion = platformVersion;
-                            deviceRegistration.TimeZone = timeZone;
-                            deviceRegistration.PushToken = pushToken;
-                            deviceRegistration.Locale = language;
-
-                            success();
-                        },
-                        error
-                    );
-                },
-                success,
-                error
-            );
-        },
-
-        _getLocaleName: function (success, error) {
-            if (this.emulatorMode) {
-                success({value: 'en_US'});
-            } else {
-                navigator.globalization.getLocaleName(
-                    function (locale) {
-                        success(locale);
-                    },
-                    error
-                );
-                navigator.globalization.getLocaleName(
-                    function (locale) {
-                    },
-                    error
-                );
-            }
-        },
-
-        _getDeviceId: function () {
-            return device.uuid;
-        },
-
-        //Returns the Everlive device platform constant given a value aquired from cordova's device.platform.
-        _getPlatformType: function () {
-            var psLower = device.platform.toLowerCase();
-            switch (psLower) {
-                case 'ios':
-                case 'iphone':
-                case 'ipad':
-                    return Platform.iOS;
-                case 'android':
-                    return Platform.Android;
-                case 'wince':
-                    return Platform.WindowsPhone;
-                case 'win32nt': // real wp8 devices return this string as platform identifier.
-                    return Platform.WindowsPhone;
-                default:
-                    return Platform.Unknown;
-            }
-        },
-
-        _deviceRegistrationFailed: function (error) {
-            this.pushToken = null;
-            this.isInitializing = false;
-            this.isInitialized = false;
-
-            if (this._initErrorCallback) {
-                this._initErrorCallback({error: error});
-            }
-        },
-
-        _deviceRegistrationSuccess: function (token) {
-            this.pushToken = token;
-            this.isInitializing = false;
-            this.isInitialized = true;
-
-            if (this._initSuccessCallback) {
-                this._initSuccessCallback({token: token});
-            }
-        },
-
-        //Occurs when the device registration in APN succeeds
-        _successfulRegistrationAPN: function (token) {
-            var self = this;
-            if (this.pushSettings.iOS && this.pushSettings.iOS.interactiveSettings) {
-                this._initializeInteractivePush(
-                    this.pushSettings.iOS,
-                    function () {
-                        self._deviceRegistrationSuccess(token);
-                    },
-                    function (err) {
-                        throw new EverliveError('The interactive push configuration is incorrect: ' + err);
-                    }
-                );
-            } else {
-                this._deviceRegistrationSuccess(token);
-            }
-        },
-
-        //Occurs if the device registration in APN fails
-        _failedRegistrationAPN: function (error) {
-            this._deviceRegistrationFailed(error);
-        },
-
-        //Occurs when device registration has been successfully sent to GCM
-        _successSentRegistrationGCM: function (id) {
-            //console.log("Successfully sent request for registering with GCM.");
-        },
-        //Occurs when device registration has been successfully sent for WP8
-        _successSentRegistrationWP8: function (id) {
-            //console.log("Successfully sent request for registering WP8 .");
-        },
-        //Occurs when an error occured when sending registration request for WP8
-        _errorSentRegistrationWP8: function (error) {
-            this._deviceRegistrationFailed(error);
-        },
-
-        //Occurs when an error occured when sending registration request to GCM
-        _errorSentRegistrationGCM: function (error) {
-            this._deviceRegistrationFailed(error);
-        },
-
-        //This function receives all notification events from APN
-        _onNotificationAPN: function (e) {
-            this._raiseNotificationEventIOS(e);
-        },
-        //This function receives all notification events for WP8
-        _onNotificationWP8: function (e) {
-            this._raiseNotificationEventWP8(e);
-        },
-
-        //This function receives all notification events from GCM
-        _onNotificationGCM: function onNotificationGCM(e) {
-            switch (e.event) {
-                case 'registered':
-                    if (e.regid.length > 0) {
-                        this._deviceRegistrationSuccess(e.regid);
-                    }
-                    break;
-                case 'message':
-                    this._raiseNotificationEventAndroid(e);
-                    break;
-                case 'error':
-                    if (!this.pushToken) {
-                        this._deviceRegistrationFailed(e);
-                    } else {
-                        this._raiseNotificationEventAndroid(e);
-                    }
-                    break;
-                default:
-                    this._raiseNotificationEventAndroid(e);
-                    break;
-            }
-        },
-
-        _raiseNotificationEventAndroid: function (e) {
-            if (this.pushSettings.notificationCallbackAndroid) {
-                this.pushSettings.notificationCallbackAndroid(e);
-            }
-        },
-        _raiseNotificationEventIOS: function (e) {
-            if (this.pushSettings.notificationCallbackIOS) {
-                this.pushSettings.notificationCallbackIOS(e);
-            }
-        },
-        _raiseNotificationEventWP8: function (e) {
-            if (this.pushSettings.notificationCallbackWP8) {
-                this.pushSettings.notificationCallbackWP8(e);
-            }
-        }
-    };
-
-    return CurrentDevice;
-}());
-
-},{"../EverliveError":47,"../common":58,"../constants":59,"../utils":100}],83:[function(require,module,exports){
-var platform = require('../everlive.platform');
+},{"../../common":53,"../../storages/LocalStore":81,"./BasePersister":70,"util":7}],73:[function(require,module,exports){
 var _ = require('../common')._;
-
-'use strict';
-
-if (platform.isNativeScript) {
-	var NativeScriptCurrentDevice = require('./NativeScriptCurrentDevice');
-    module.exports = NativeScriptCurrentDevice;
-} else if (platform.isCordova || platform.isDesktop) {
-	var CordovaCurrentDevice = require('./CordovaCurrentDevice');
-    module.exports = CordovaCurrentDevice;
-} else {
-    module.exports = _.noop;
-}
-},{"../common":58,"../everlive.platform":61,"./CordovaCurrentDevice":82,"./NativeScriptCurrentDevice":84}],84:[function(require,module,exports){
-var buildPromise = require('../utils').buildPromise;
-var EverliveError = require('../EverliveError').EverliveError;
-var Platform = require('../constants').Platform;
-var common = require('../common');
-var utils = require('../utils');
-var jstz = common.jstz;
-var _ = common._;
-var tnsPushPluginLazy = utils.lazyRequire('nativescript-push-notifications', 'tnsPushPlugin');
-var tnsPlatform = require('platform');
-
-module.exports = (function () {
-    /**
-     * @class CurrentDevice
-     * @deprecated
-     * @protected
-     * @param pushHandler
-     * @constructor
-     */
-    var CurrentDevice = function (pushHandler) {
-        this._pushHandler = pushHandler;
-        this._initSuccessCallback = null;
-        this._initErrorCallback = null;
-
-        //Suffix for the global callback functions
-        this._globalFunctionSuffix = null;
-
-        this.pushSettings = null;
-        this.pushToken = null;
-        this.isInitialized = false;
-        this.isInitializing = false;
-
-        this.emulatorMode = false;
-    };
-
-    CurrentDevice.ensurePushIsAvailable = function() {
-        // NativeScript will throw an error when the TNS Push Plugin cannot be required. So this is actually unreachable.
-    };
-
-    CurrentDevice.prototype = {
-
-        /**
-         * Initializes the current device for push notifications. This method requests a push token from the device vendor and enables the push notification functionality on the device. Once this is done, you can register the device in {{site.TelerikBackendServices}} using the register() method.
-         * @method enableNotifications
-         * @name enableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @param {PushSettings} pushSettings An object specifying various settings for the initialization.
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Initializes the current device for push notifications. This method requests a push token from the device vendor and enables the push notification functionality on the device. Once this is done, you can register the device in Everlive using the register() method.
-         * @method enableNotifications
-         * @name enableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @param {PushSettings} pushSettings An object specifying various settings for the initialization.
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        enableNotifications: function (pushSettings, success, error) {
-            this.pushSettings = this._cleanPlatformsPushSettings(pushSettings);
-
-            return buildPromise(_.bind(this._initialize, this), success, error);
-        },
-
-        /**
-         * Disables push notifications for the current device. This method invalidates any push tokens that were obtained for the device from the current application.
-         * @method disableNotifications
-         * @name disableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Disables push notifications for the current device. This method invalidates any push tokens that were obtained for the device from the current application.
-         * @method disableNotifications
-         * @name disableNotifications
-         * @memberOf CurrentDevice.prototype
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        disableNotifications: function (successCb, errorCb) {
-            var self = this;
-
-            return this.unregister().then(
-                function () {
-                    return buildPromise(
-                        function (success, error) {
-                            var successCallback = function successCallback() {
-                                    self.isInitialized = false;
-                                    success();
-                                };
-
-
-                            var platformType = self._getPlatformType();
-                            if(platformType === Platform.Android) {
-                                return tnsPushPluginLazy.tnsPushPlugin.unregister(successCallback, error, self.pushSettings.android);
-                            }
-
-                            tnsPushPluginLazy.tnsPushPlugin.unregister(successCallback, error);
-                        },
-                        successCb,
-                        errorCb
-                    );
-                },
-                errorCb
-            );
-        },
-
-        /**
-         * Returns the push registration for the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method getRegistration
-         * @name getRegistration
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Returns the push registration for the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method getRegistration
-         * @name getRegistration
-         * @param {Function} success Callback to invoke on success.
-         * @param {Function} error Callback to invoke on error.
-         */
-        getRegistration: function (success, error) {
-            var deviceId = encodeURIComponent(this._getDeviceId());
-            return this._pushHandler.devices.getById('HardwareId/' + deviceId, success, error);
-        },
-
-        /**
-         * Registers the current device for push notifications in {{site.TelerikBackendServices}}. This method can be called only after [enableNotifications()]{@link currentDevice.enableNotifications} has completed successfully.
-         * @memberOf CurrentDevice.prototype
-         * @method register
-         * @name register
-         * @param {Object} customParameters Custom parameters for the registration.
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Registers the current device for push notifications in {{site.TelerikBackendServices}}. This method can be called only after [enableNotifications()]{@link currentDevice.enableNotifications} has completed successfully.
-         * @memberOf CurrentDevice.prototype
-         * @method register
-         * @name register
-         * @param {Object} customParameters Custom parameters for the registration.
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        register: function (customParameters, success, error) {
-            var self = this;
-
-            var deviceRegistration = {};
-            if (customParameters !== undefined) {
-                deviceRegistration.Parameters = customParameters;
-            }
-
-            return this._populateRegistrationObject(deviceRegistration).then(
-                function () {
-                    return self._pushHandler.devices.create(deviceRegistration, success, error);
-                },
-                error
-            );
-        },
-
-        /**
-         * Unregisters the current device from push notifications in {{site.TelerikBackendServices}}. After this call completes successfully, {{site.bs}} will no longer send notifications to this device. Note that this does not prevent the device from receiving notifications and does not invalidate push tokens.
-         * @memberOf CurrentDevice.prototype
-         * @method unregister
-         * @name unregister
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Unregisters the current device from push notifications in {{site.TelerikBackendServices}}. After this call completes successfully, {{site.bs}} will no longer send notifications to this device. Note that this does not prevent the device from receiving notifications and does not invalidate push tokens.
-         * @memberOf CurrentDevice.prototype
-         * @method unregister
-         * @name unregister
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        unregister: function (success, error) {
-            var deviceId = encodeURIComponent(this._getDeviceId());
-            return this._pushHandler.devices.destroySingle({Id: 'HardwareId/' + deviceId}, success, error);
-        },
-
-        /**
-         * Updates the registration of the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method updateRegistration
-         * @name updateRegistration
-         * @param {Object} customParameters Custom parameters for the registration. If undefined, customParameters are not updated.
-         * @returns {Object} The promise for the request.
-         */
-        /**
-         * Updates the registration for the current device.
-         * @memberOf CurrentDevice.prototype
-         * @method updateRegistration
-         * @name updateRegistration
-         * @param {Object} customParameters Custom parameters for the registration. If undefined, customParameters are not updated.
-         * @param {Function} [success] Callback to invoke on success.
-         * @param {Function} [error] Callback to invoke on error.
-         */
-        updateRegistration: function (customParameters, success, error) {
-            var self = this;
-
-            var deviceRegistration = {};
-            if (customParameters !== undefined) {
-                deviceRegistration.Parameters = customParameters;
-            }
-
-            return this._populateRegistrationObject(deviceRegistration).then(
-                function () {
-                    deviceRegistration.Id = 'HardwareId/' + encodeURIComponent(deviceRegistration.HardwareId);
-                    return self._pushHandler.devices.updateSingle(deviceRegistration, success, error);
-                },
-                error
-            );
-        },
-
-        /**
-         * This method provides a different operation on each supported platform:
-         *
-         * - On iOS: Checks if Notifications is enabled for this application in the device's Notification Center.
-         * - On Windows Phone: Checks if the application has an active open channel for communication with the Microsoft Push Notification Service. The outcome does not depend on the device's notification settings.
-         * - On Android: Checks if the application has established a connection with Google Cloud Messaging. The outcome does not depend on the device's notification settings.
-         * @method areNotificationsEnabled
-         * @name areNotificationsEnabled
-         * @memberOf Push.prototype
-         * @param {Object} options An object passed to the Push Notification plugin's areNotificationsEnabled method
-         * @returns {Promise} The promise for the request.
-         */
-        /**
-         * iOS: Checks if the Notifications are enabled for this Application in the Device's Notification Center.
-         * Windows Phone: Checks if the Application has an active opened Channel for communication with the Notification Service. Not relying on the device notification settings.
-         * Android: Checks if the Application has established connection with the Notification Service. Not relying on the device notification settings.
-         * @method areNotificationsEnabled
-         * @name areNotificationsEnabled
-         * @memberOf Push.prototype
-         * @param {Object} options an object passed to the Push Notification plugin's areNotificationsEnabled method.
-         * @param {Function} [onSuccess] Callback to invoke on successful check. Passes a single boolean value: true or false.
-         * @param {Function} [onError] Callback to invoke when an error in the push plugin has occurred.
-         */
-        areNotificationsEnabled: function (options, onSuccess, onError) {
-            options = options || {};
-            
-            return buildPromise(function (successCb, errorCb) {
-                tnsPushPluginLazy.tnsPushPlugin.areNotificationsEnabled(successCb, errorCb, options);
-            }, onSuccess, onError);
-        },
-
-        _initializeInteractivePush: function (iOSSettings, success, error) {
-            tnsPushPluginLazy.tnsPushPlugin.registerUserNotificationSettings(
-                // the success callback which will immediately return (APNs is not contacted for this)
-                success,
-                // called in case the configuration is incorrect
-                error
-            );
-        },
-
-        //Initializes the push functionality on the device.
-        _initialize: function (success, error) {
-            if (this.isInitializing) {
-                error(new EverliveError('Push notifications are currently initializing.'));
-                return;
-            }
-
-            this._initSuccessCallback = success;
-            this._initErrorCallback = error;
-
-            if (this.isInitialized) {
-                this._deviceRegistrationSuccess(this.pushToken);
-                return;
-            }
-
-            this.isInitializing = true;
-
-            var suffix = this._globalFunctionSuffix;
-            if (!suffix) {
-                suffix = Date.now().toString();
-                this._globalFunctionSuffix = suffix;
-            }
-
-            var platformType = this._getPlatformType();
-            if (platformType === Platform.iOS) {
-                //Construct registration options object and validate iOS settings
-                var apnRegistrationOptions = this.pushSettings.iOS;
-
-                apnRegistrationOptions.notificationCallbackIOS = this.pushSettings.notificationCallbackIOS;
-                //Register for APN
-                tnsPushPluginLazy.tnsPushPlugin.register(
-                    apnRegistrationOptions,
-                    _.bind(this._successfulRegistrationAPN, this),
-                    _.bind(this._failedRegistrationAPN, this)                    
-                );
-            } else if (platformType === Platform.Android) {
-                // Ensure the required fields are present in the Android Settings
-                var gcmRegistrationOptions = this.pushSettings.android;
-                this._validateAndroidSettings(gcmRegistrationOptions);
-
-                gcmRegistrationOptions.notificationCallbackAndroid = this.pushSettings.notificationCallbackAndroid;
-
-                //Register for GCM
-                tnsPushPluginLazy.tnsPushPlugin.register(
-                    gcmRegistrationOptions,
-                    _.bind(this._successSentRegistrationGCM, this),
-                    _.bind(this._errorSentRegistrationGCM, this)
-                );
-            } else {
-                throw new EverliveError('The current platform is not supported: ' + tnsPlatform.device.os);
-            }
-        },
-
-        _validateAndroidSettings: function (androidSettings) {
-            if (!androidSettings.senderID) {
-                throw new EverliveError('Sender ID (project number) is not set in the android settings.');
-            }
-        },
-        _cleanPlatformsPushSettings: function (pushSettings) {
-            var cleanSettings = {};
-            pushSettings = pushSettings || {};
-
-            var addSettingsForPlatform = function addSettingsForPlatform(newSettingsObject, platform, allowedFields) {
-                if (!pushSettings[platform]) {
-                    return;
-                }
-
-                newSettingsObject[platform] = newSettingsObject[platform] || {};
-                var newPlatformSettings = pushSettings[platform];
-                var settings = newSettingsObject[platform];
-                _.each(allowedFields, function (allowedField) {
-                    if (newPlatformSettings.hasOwnProperty(allowedField)) {
-                        settings[allowedField] = newPlatformSettings[allowedField];
-                    }
-                });
-            };
-
-            addSettingsForPlatform(cleanSettings, 'iOS', ['badge', 'sound', 'alert', 'interactiveSettings']);
-            addSettingsForPlatform(cleanSettings, 'android', ['senderID', 'projectNumber']);
-
-            var callbackFields = ['notificationCallbackAndroid', 'notificationCallbackIOS'];
-            _.each(callbackFields, function (callbackField) {
-                var callback = pushSettings[callbackField];
-                if (callback) {
-                    if (typeof callback !== 'function') {
-                        throw new EverliveError('The "' + callbackField + '" of the push settings should be a function');
-                    }
-
-                    cleanSettings[callbackField] = pushSettings[callbackField];
-                }
-            });
-
-            if (pushSettings.customParameters) {
-                cleanSettings.customParameters = pushSettings.customParameters;
-            }
-
-            return cleanSettings;
-        },
-
-        _populateRegistrationObject: function (deviceRegistration, success, error) {
-            var self = this;
-
-            return buildPromise(
-                function (success, error) {
-                    if (!self.pushToken) {
-                        throw new EverliveError('Push token is not available.');
-                    }
-
-                    self._getLocaleName(
-                        function (locale) {
-                            var deviceId = self._getDeviceId();
-                            var hardwareModel = tnsPlatform.device.model;
-                            var platformType = self._getPlatformType();
-                            var timeZone = jstz.determine().name();
-                            var pushToken = self.pushToken;
-                            var language = 'en_US'; //TODO
-                            var platformVersion = tnsPlatform.device.osVersion;
-
-                            deviceRegistration.HardwareId = deviceId;
-                            deviceRegistration.HardwareModel = hardwareModel;
-                            deviceRegistration.PlatformType = platformType;
-                            deviceRegistration.PlatformVersion = platformVersion;
-                            deviceRegistration.TimeZone = timeZone;
-                            deviceRegistration.PushToken = pushToken;
-                            deviceRegistration.Locale = language;
-
-                            success();
-                        },
-                        error
-                    );
-                },
-                success,
-                error
-            );
-        },
-
-        _getLocaleName: function (success, error) {
-            return success(); // TODO            
-            /* TODO: Must translate somehow to NativeScript to get the current locale
-            if (this.emulatorMode) {
-                success({value: 'en_US'});
-            } else {
-                navigator.globalization.getLocaleName(
-                    function (locale) {
-                        success(locale);
-                    },
-                    error
-                );
-                navigator.globalization.getLocaleName(
-                    function (locale) {
-                    },
-                    error
-                );
-            }*/
-        },
-
-        _getDeviceId: function () {
-            return tnsPlatform.device.uuid;
-        },
-
-        //Returns the Everlive device platform constant given a value aquired from cordova's device.platform.
-        _getPlatformType: function () {
-            var psLower = tnsPlatform.device.os.toLowerCase();
-            switch (psLower) {
-                case 'ios':
-                case 'iphone':
-                case 'ipad':
-                    return Platform.iOS;
-                case 'android':
-                    return Platform.Android;
-                default:
-                    return Platform.Unknown;
-            }
-        },
-
-        _deviceRegistrationFailed: function (error) {
-            this.pushToken = null;
-            this.isInitializing = false;
-            this.isInitialized = false;
-
-            if (this._initErrorCallback) {
-                this._initErrorCallback({error: error});
-            }
-        },
-
-        _deviceRegistrationSuccess: function (token) {
-            this.pushToken = token;
-            this.isInitializing = false;
-            this.isInitialized = true;
-
-            if (this._initSuccessCallback) {
-                this._initSuccessCallback({token: token});
-            }
-        },
-
-        //Occurs when the device registration in APN succeeds
-        _successfulRegistrationAPN: function (token) {
-            var self = this;
-            if (this.pushSettings.iOS && this.pushSettings.iOS.interactiveSettings) {
-                this._initializeInteractivePush(
-                    this.pushSettings.iOS,
-                    function () {
-                        self._deviceRegistrationSuccess(token);
-                    },
-                    function (err) {
-                        throw new EverliveError('The interactive push configuration is incorrect: ' + err);
-                    }
-                );
-            } else {
-                this._deviceRegistrationSuccess(token);
-            }
-        },
-
-        //Occurs if the device registration in APN fails
-        _failedRegistrationAPN: function (error) {
-            this._deviceRegistrationFailed(error);
-        },
-
-        //Occurs when device registration has been successfully sent to GCM
-        _successSentRegistrationGCM: function (token) {
-            //console.log("Successfully sent request for registering with GCM.");
-
-            // set on message received.
-            tnsPushPluginLazy.tnsPushPlugin.onMessageReceived(this.pushSettings.notificationCallbackAndroid);
-
-            this._deviceRegistrationSuccess(token);
-        },
-
-        //Occurs when an error occured when sending registration request to GCM
-        _errorSentRegistrationGCM: function (error) {
-            this._deviceRegistrationFailed(error);
-        },
-
-        //This function receives all notification events from APN
-        _onNotificationAPN: function (e) {
-            this._raiseNotificationEventIOS(e);
-        },
-
-        //This function receives all notification events from GCM
-        _onNotificationGCM: function onNotificationGCM(e) {
-            switch (e.event) {
-                case 'registered':
-                    if (e.regid.length > 0) {
-                        this._deviceRegistrationSuccess(e.regid);
-                    }
-                    break;
-                case 'message':
-                    this._raiseNotificationEventAndroid(e);
-                    break;
-                case 'error':
-                    if (!this.pushToken) {
-                        this._deviceRegistrationFailed(e);
-                    } else {
-                        this._raiseNotificationEventAndroid(e);
-                    }
-                    break;
-                default:
-                    this._raiseNotificationEventAndroid(e);
-                    break;
-            }
-        },
-
-        _raiseNotificationEventAndroid: function (e) {
-            if (this.pushSettings.notificationCallbackAndroid) {
-                this.pushSettings.notificationCallbackAndroid(e);
-            }
-        },
-        _raiseNotificationEventIOS: function (e) {
-            if (this.pushSettings.notificationCallbackIOS) {
-                this.pushSettings.notificationCallbackIOS(e);
-            }
-        }
-    };
-
-    return CurrentDevice;
-}());
-
-},{"../EverliveError":47,"../common":58,"../constants":59,"../utils":100,"platform":"platform"}],85:[function(require,module,exports){
-var _ = require('../common')._;
-var constants = require('../constants');
-var Query = require('../query/Query');
-var Headers = constants.Headers;
-var utils = require('../utils');
 
 module.exports = (function () {
     // TODO: [offline] Update the structure - filter field can be refactored for example and a skip/limit/sort property can be added
@@ -22978,25 +21060,25 @@ module.exports = (function () {
     };
 
     DataQuery.prototype = {
-        _normalizeHeaders: function () {
-            this._normalizedHeaders = utils.normalizeKeys(this.headers);
-        },
-
         getHeader: function (header) {
-            this._normalizeHeaders();
+            var self = this;
+            var headerKeys = Object.keys(this.headers);
+
+            if (!this._normalizedHeaders) {
+                this._normalizedHeaders = {};
+                _.each(headerKeys, function (headerKey) {
+                    var normalizedKey = headerKey.toLowerCase();
+                    var headerValue = self.headers[headerKey];
+                    self._normalizedHeaders[normalizedKey] = headerValue;
+                });
+            }
 
             var normalizedHeader = header.toLowerCase();
             return this._normalizedHeaders[normalizedHeader];
         },
 
         getHeaderAsJSON: function (header) {
-            this._normalizeHeaders();
-
-            var headerValue;
-            if (header) {
-                headerValue = this._normalizedHeaders[header.toLowerCase()];
-            }
-
+            var headerValue = this._normalizedHeaders[header.toLowerCase()];
             if (_.isObject(headerValue)) {
                 return headerValue;
             }
@@ -23009,174 +21091,34 @@ module.exports = (function () {
             } else {
                 return headerValue;
             }
-        },
-
-        getHeaders: function () {
-            this._normalizeHeaders();
-            var headers = _.deepExtend(this._normalizedHeaders);
-            return headers;
-        },
-
-        getQueryParameters: function () {
-            var queryParams = {};
-
-            if (this.operation === DataQuery.operations.ReadById) {
-                queryParams.filter = this.additionalOptions.id;
-                queryParams.expand = this.getHeaderAsJSON(Headers.expand);
-            } else {
-                var sort = this.getHeaderAsJSON(Headers.sort);
-                var limit = this.getHeaderAsJSON(Headers.take);
-                var skip = this.getHeaderAsJSON(Headers.skip);
-                var select = this.getHeaderAsJSON(Headers.select);
-                var filter = this.getHeaderAsJSON(Headers.filter);
-                var expand = this.getHeaderAsJSON(Headers.expand);
-
-                if (this.filter instanceof Query) {
-                    var filterObj = this.filter.build();
-                    queryParams.filter = filterObj.$where || filter || {};
-                    queryParams.sort = filterObj.$sort || sort;
-                    queryParams.limit = filterObj.$take || limit;
-                    queryParams.skip = filterObj.$skip || skip;
-                    queryParams.select = filterObj.$select || select;
-                    queryParams.expand = filterObj.$expand || expand;
-                } else {
-                    queryParams.filter = (this.filter || filter) || {};
-                    queryParams.sort = sort;
-                    queryParams.limit = limit;
-                    queryParams.skip = skip;
-                    queryParams.select = select;
-                    queryParams.expand = expand;
-                }
-            }
-
-            return queryParams;
-        },
-
-        applyEventQuery: function (eventQuery) {
-            this._applyCustomHeaders(eventQuery);
-            this._applyEventQueryHeaders(eventQuery);
-            this._applyEventQueryParams(eventQuery);
-            this.additionalOptions = this.additionalOptions || {};
-            this.additionalOptions.id = eventQuery.itemId;
-            this.data = eventQuery.data;
-            this._applyEventQuerySettings(eventQuery);
-        },
-
-        _applyCustomHeaders: function (eventQuery) {
-            this.headers = eventQuery.headers;
-            this._normalizeHeaders();
-        },
-
-        _applyEventQueryHeaders: function (eventQuery) {
-            this._applyEventHeader(Headers.filter, eventQuery.filter);
-            this._applyEventHeader(Headers.select, eventQuery.fields);
-            this._applyEventHeader(Headers.sort, eventQuery.sort);
-            this._applyEventHeader(Headers.skip, eventQuery.skip);
-            this._applyEventHeader(Headers.take, eventQuery.take);
-            this._applyEventHeader(Headers.expand, eventQuery.expand);
-            this._applyEventHeader(Headers.powerFields, eventQuery.powerfields);
-        },
-
-        _applyEventQueryParams: function (eventQuery) {
-            this.filter = eventQuery.filter;
-            this.fields = eventQuery.select;
-            this.sort = eventQuery.sort;
-            this.skip = eventQuery.skip;
-            this.take = eventQuery.take;
-            this.expand = eventQuery.expand;
-        },
-
-        _applyEventQuerySettings: function (eventQuery) {
-            this.useOffline = eventQuery.settings.useOffline;
-            this.forceCache = eventQuery.settings.forceCache;
-            this.ignoreCache = eventQuery.settings.ignoreCache;
-            this.applyOffline = eventQuery.settings.applyOffline;
-        },
-
-        _applyEventHeader: function (header, value) {
-            if (value && typeof value !== 'string') {
-                var headerToLower = header.toLowerCase();
-                this.headers[headerToLower] = JSON.stringify(value);
-            }
         }
     };
 
-    DataQuery.operations = constants.DataQueryOperations;
+    DataQuery.operations = {
+        read: 'read',
+        create: 'create',
+        update: 'update',
+        remove: 'destroy',
+        removeSingle: 'destroySingle',
+        readById: 'readById',
+        count: 'count',
+        rawUpdate: 'rawUpdate',
+        setAcl: 'setAcl',
+        setOwner: 'setOwner',
+        userLogin: 'login',
+        userLogout: 'logout',
+        userChangePassword: 'changePassword',
+        userLoginWithProvider: 'loginWith',
+        userLinkWithProvider: 'linkWith',
+        userUnlinkFromProvider: 'unlinkFrom',
+        userResetPassword: 'resetPassword',
+        filesUpdateContent: 'updateContent',
+        filesGetDownloadUrlById: 'downloadUrlById'
+    };
 
     return DataQuery;
 }());
-},{"../common":58,"../constants":59,"../query/Query":87,"../utils":100}],86:[function(require,module,exports){
-'use strict';
-
-var constants = require('../constants');
-
-var EventQuery = function () {
-};
-
-function applyDataQueryParameters(eventQuery, dataQuery) {
-    var queryParameters = dataQuery.getQueryParameters();
-    eventQuery.filter = queryParameters.filter;
-    eventQuery.fields = queryParameters.select;
-    eventQuery.sort = queryParameters.sort;
-    eventQuery.skip = queryParameters.skip;
-    eventQuery.take = queryParameters.limit || queryParameters.take;
-    eventQuery.expand = queryParameters.expand;
-    return queryParameters;
-}
-
-function applyDataQuerySettings(eventQuery, dataQuery) {
-    eventQuery.settings = {
-        useOffline: dataQuery.useOffline,
-        applyOffline: dataQuery.applyOffline,
-        ignoreCache: dataQuery.ignoreCache,
-        forceCache: dataQuery.forceCache
-    };
-}
-
-EventQuery.fromDataQuery = function (dataQuery) {
-    var eventQuery = new EventQuery();
-    eventQuery.contentTypeName = dataQuery.collectionName;
-    if (dataQuery.additionalOptions && dataQuery.additionalOptions.id) {
-        switch (dataQuery.operation) {
-            case constants.DataQueryOperations.Update:
-                eventQuery.operation = constants.DataQueryOperations.UpdateById;
-                break;
-            case constants.DataQueryOperations.Delete:
-                eventQuery.operation = constants.DataQueryOperations.DeleteById;
-                break;
-            default:
-                eventQuery.operation = dataQuery.operation;
-        }
-    } else {
-        eventQuery.operation = dataQuery.operation;
-    }
-
-    eventQuery.itemId = dataQuery.additionalOptions ? dataQuery.additionalOptions.id : undefined;
-    eventQuery.data = dataQuery.data;
-
-    applyDataQuerySettings(eventQuery, dataQuery);
-    applyDataQueryParameters(eventQuery, dataQuery);
-    eventQuery.headers = dataQuery.getHeaders();
-    var powerFieldsHeader = eventQuery.headers[constants.Headers.powerFields];
-    if (typeof powerFieldsHeader === 'string') {
-        eventQuery.powerfields = JSON.parse(powerFieldsHeader);
-    }
-    eventQuery.isSync = dataQuery.isSync; // readonly
-
-    return eventQuery;
-};
-
-EventQuery.prototype = {
-    cancel: function () {
-        this._cancelled = true;
-    },
-    isCancelled: function () {
-        return this._cancelled;
-    }
-};
-
-module.exports = EventQuery;
-},{"../constants":59}],87:[function(require,module,exports){
+},{"../common":53}],74:[function(require,module,exports){
 var Expression = require('../Expression');
 var OperatorType = require('../constants').OperatorType;
 var WhereQuery = require('./WhereQuery');
@@ -23186,12 +21128,12 @@ module.exports = (function () {
     /**
      * @class Query
      * @classdesc A query class used to describe a request that will be made to the {{site.TelerikBackendServices}} JavaScript API.
-     * @param {object} [filter] A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
-     * @param {object} [fields] A [fields expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-subset-fields) definition.
-     * @param {object} [sort] A [sort expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-sorting) definition.
+     * @param {object} [filter] A [filter expression]({% slug rest-api-querying-filtering %}) definition.
+     * @param {object} [fields] A [fields expression]({% slug rest-api-querying-Subset-of-fields %}) definition.
+     * @param {object} [sort] A [sort expression]({% slug rest-api-querying-sorting %}) definition.
      * @param {number} [skip] Number of items to skip. Used for paging.
      * @param {number} [take] Number of items to take. Used for paging.
-     * @param {object} [expand] An [expand expression](http://docs.telerik.com/platform/backend-services/rest/data/relations/relations-defining) definition.
+     * @param {object} [expand] An [expand expression]({% slug features-data-relations-defining-expand %}) definition.
      */
     function Query(filter, fields, sort, skip, take, expand) {
         this.filter = filter;
@@ -23208,7 +21150,7 @@ module.exports = (function () {
          * @memberOf Query.prototype
          * @method where
          * @name where
-         * @param {object} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @returns {Query}
          */
         /** Defines a filter definition for the current query.
@@ -23228,7 +21170,7 @@ module.exports = (function () {
         /** Applies a fields selection to the current query. This allows you to retrieve only a subset of all available item fields.
          * @memberOf Query.prototype
          * @method select
-         * @param {object} fieldsExpression A [fields expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-subset-fields) definition.
+         * @param {object} fieldsExpression A [fields expression]({% slug rest-api-querying-Subset-of-fields %}) definition.
          * @returns {Query}
          */
         select: function () {
@@ -23279,7 +21221,7 @@ module.exports = (function () {
         /** Sets an expand expression for the current query. This allows you to retrieve complex data sets using a single query based on relations between data types.
          * @memberOf Query.prototype
          * @method expand
-         * @param {object} expandExpression An [expand expression](http://docs.telerik.com/platform/backend-services/rest/data/relations/relations-defining) definition.
+         * @param {object} expandExpression An [expand expression]({% slug features-data-relations-defining-expand %}) definition.
          * @returns {Query}
          */
         expand: function (expandExpression) {
@@ -23302,7 +21244,7 @@ module.exports = (function () {
 
     return Query;
 }());
-},{"../Expression":49,"../constants":59,"./QueryBuilder":88,"./WhereQuery":90}],88:[function(require,module,exports){
+},{"../Expression":46,"../constants":54,"./QueryBuilder":75,"./WhereQuery":77}],75:[function(require,module,exports){
 var constants = require('../constants');
 var OperatorType = constants.OperatorType;
 var _ = require('../common')._;
@@ -23652,11 +21594,10 @@ module.exports = (function () {
 
     return QueryBuilder;
 }());
-},{"../EverliveError":47,"../Expression":49,"../GeoPoint":50,"../common":58,"../constants":59}],89:[function(require,module,exports){
+},{"../EverliveError":44,"../Expression":46,"../GeoPoint":47,"../common":53,"../constants":54}],76:[function(require,module,exports){
 var DataQuery = require('./DataQuery');
 var Request = require('../Request');
 var _ = require('../common')._;
-var constants = require('../constants');
 
 module.exports = (function () {
     var RequestOptionsBuilder = {};
@@ -23691,32 +21632,32 @@ module.exports = (function () {
         return _.extend(RequestOptionsBuilder._buildBaseObject(dataQuery), additionalOptions);
     };
 
-    RequestOptionsBuilder[DataQuery.operations.Read] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.read] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'GET'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.ReadById] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.readById] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'GET'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.Count] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.count] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'GET',
             endpoint: dataQuery.collectionName + '/_count'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.Create] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.create] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'POST'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.RawUpdate] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.rawUpdate] = function (dataQuery) {
         var endpoint = dataQuery.collectionName;
         var filter = dataQuery.filter;
         var ofilter = null; // request options filter
@@ -23734,28 +21675,28 @@ module.exports = (function () {
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.Update] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.update] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'PUT'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.Delete] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.remove] = function (dataQuery) {
         return _.extend(RequestOptionsBuilder._buildBaseObject(dataQuery), {
             method: 'DELETE'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.DeleteById] = RequestOptionsBuilder[DataQuery.operations.Delete];
+    RequestOptionsBuilder[DataQuery.operations.removeSingle] = RequestOptionsBuilder[DataQuery.operations.remove];
 
-    RequestOptionsBuilder[DataQuery.operations.SetAcl] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.setAcl] = function (dataQuery) {
         var endpoint = dataQuery.collectionName;
         var filter = dataQuery.filter;
 
         if (typeof filter === 'string') { // if filter is string than will update a single item using the filter as an identifier
             endpoint += '/' + filter;
         } else if (typeof filter === 'object') { // else if it is an object than we will use it's id property
-            endpoint += '/' + filter[constants.idField];
+            endpoint += '/' + filter[idField];
         }
         endpoint += '/_acl';
         var method, data;
@@ -23773,13 +21714,13 @@ module.exports = (function () {
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.SetOwner] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.setOwner] = function (dataQuery) {
         var endpoint = dataQuery.collectionName;
         var filter = dataQuery.filter;
         if (typeof filter === 'string') { // if filter is string than will update a single item using the filter as an identifier
             endpoint += '/' + filter;
         } else if (typeof filter === 'object') { // else if it is an object than we will use it's id property
-            endpoint += '/' + filter[constants.idField];
+            endpoint += '/' + filter[idField];
         }
         endpoint += '/_owner';
 
@@ -23789,7 +21730,7 @@ module.exports = (function () {
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserLogin] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.userLogin] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'POST',
             endpoint: 'oauth/token',
@@ -23798,14 +21739,14 @@ module.exports = (function () {
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserLogout] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.userLogout] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'GET',
             endpoint: 'oauth/logout'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserChangePassword] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.userChangePassword] = function (dataQuery) {
         var keepTokens = dataQuery.additionalOptions.keepTokens;
         var endpoint = 'Users/changepassword';
         if (keepTokens) {
@@ -23820,49 +21761,42 @@ module.exports = (function () {
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserLoginWithProvider] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.userLoginWithProvider] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'POST',
             authHeaders: false
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserLinkWithProvider] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.userLinkWithProvider] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'POST',
             endpoint: RequestOptionsBuilder._buildEndpointUrl(dataQuery) + '/link'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserUnlinkFromProvider] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.userUnlinkFromProvider] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'POST',
             endpoint: RequestOptionsBuilder._buildEndpointUrl(dataQuery) + '/unlink'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserResetPassword] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.userResetPassword] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'POST',
             endpoint: RequestOptionsBuilder._buildEndpointUrl(dataQuery) + '/resetpassword'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.UserSetPassword] = function (dataQuery) {
-        return RequestOptionsBuilder._build(dataQuery, {
-            method: 'POST',
-            endpoint: RequestOptionsBuilder._buildEndpointUrl(dataQuery) + '/setpassword'
-        });
-    };
-
-    RequestOptionsBuilder[DataQuery.operations.FilesUpdateContent] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.filesUpdateContent] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'PUT',
             endpoint: RequestOptionsBuilder._buildEndpointUrl(dataQuery) + '/Content'
         });
     };
 
-    RequestOptionsBuilder[DataQuery.operations.FilesGetDownloadUrlById] = function (dataQuery) {
+    RequestOptionsBuilder[DataQuery.operations.filesGetDownloadUrlById] = function (dataQuery) {
         return RequestOptionsBuilder._build(dataQuery, {
             method: 'GET'
         });
@@ -23870,7 +21804,7 @@ module.exports = (function () {
 
     return RequestOptionsBuilder;
 }());
-},{"../Request":52,"../common":58,"../constants":59,"./DataQuery":85}],90:[function(require,module,exports){
+},{"../Request":49,"../common":53,"./DataQuery":73}],77:[function(require,module,exports){
 var Expression = require('../Expression');
 var OperatorType = require('../constants').OperatorType;
 
@@ -24042,7 +21976,7 @@ module.exports = (function () {
          * @memberOf WhereQuery.prototype
          * @param {string} field Field name.
          * @param {string} regularExpression Regular expression in PCRE format.
-         * @param {string} [options] A string of regex options to use. See [specs](http://docs.mongodb.org/manual/reference/operator/query/regex/#op._S_options) for a description of available options.
+         * @param {string} [options] A string of regex options to use. See [specs]({http://docs.mongodb.org/manual/reference/operator/query/regex/#op._S_options}) for a description of available options.
          * @returns {WhereQuery}
          */
         regex: function (field, value, flags) {
@@ -24054,7 +21988,7 @@ module.exports = (function () {
          * @memberOf WhereQuery.prototype
          * @param {string} field Field name.
          * @param {string} value The string that the field should start with.
-         * @param {string} [options] A string of regex options to use. See [specs](http://docs.mongodb.org/manual/reference/operator/query/regex/#op._S_options) for a description of available options.
+         * @param {string} [options] A string of regex options to use. See [specs]({http://docs.mongodb.org/manual/reference/operator/query/regex/#op._S_options}) for a description of available options.
          * @returns {WhereQuery}
          */
         startsWith: function (field, value, flags) {
@@ -24066,7 +22000,7 @@ module.exports = (function () {
          * @memberOf WhereQuery.prototype
          * @param {string} field Field name.
          * @param {string} value The string that the field should end with.
-         * @param {string} [options] A string of  regex options to use. See [specs](http://docs.mongodb.org/manual/reference/operator/query/regex/#op._S_options) for a description of available options.
+         * @param {string} [options] A string of  regex options to use. See [specs]({http://docs.mongodb.org/manual/reference/operator/query/regex/#op._S_options}) for a description of available options.
          * @returns {WhereQuery}
          */
         endsWith: function (field, value, flags) {
@@ -24166,7 +22100,7 @@ module.exports = (function () {
 
     return WhereQuery;
 }());
-},{"../Expression":49,"../constants":59}],91:[function(require,module,exports){
+},{"../Expression":46,"../constants":54}],78:[function(require,module,exports){
 var http = require('http');
 module.exports = (function () {
     'use strict';
@@ -24216,7 +22150,7 @@ module.exports = (function () {
 
     return reqwest;
 }());
-},{"http":"http"}],92:[function(require,module,exports){
+},{"http":"http"}],79:[function(require,module,exports){
 (function (Buffer){
 var url = require('url');
 var http = require('http');
@@ -24310,8 +22244,7 @@ module.exports = (function () {
     return reqwest;
 }());
 }).call(this,require("buffer").Buffer)
-
-},{"buffer":"buffer","http":"http","https":"https","rsvp":34,"underscore":35,"url":"url","zlib":"zlib"}],93:[function(require,module,exports){
+},{"buffer":"buffer","http":"http","https":"https","rsvp":31,"underscore":32,"url":"url","zlib":"zlib"}],80:[function(require,module,exports){
 var platform = require('../everlive.platform');
 var WebFileStore = require('./WebFileStore');
 var NativeScriptFileStore = require('./NativeScriptFileStore');
@@ -24326,7 +22259,7 @@ if (platform.isNativeScript) {
 } else {
     module.exports = _.noop;
 }
-},{"../common":58,"../everlive.platform":61,"./NativeScriptFileStore":95,"./WebFileStore":96}],94:[function(require,module,exports){
+},{"../common":53,"../everlive.platform":56,"./NativeScriptFileStore":82,"./WebFileStore":83}],81:[function(require,module,exports){
 var platform = require('./../everlive.platform.js');
 var isNativeScript = platform.isNativeScript;
 var isNodejs = platform.isNodejs;
@@ -24405,18 +22338,17 @@ module.exports = (function () {
 
     return LocalStore;
 }());
-},{"./../constants":59,"./../everlive.platform.js":61,"application-settings":"application-settings","local-settings":"local-settings","node-localstorage":"node-localstorage"}],95:[function(require,module,exports){
+},{"./../constants":54,"./../everlive.platform.js":56,"application-settings":"application-settings","local-settings":"local-settings","node-localstorage":"node-localstorage"}],82:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
 var rsvp = common.rsvp;
-var utils = require('../utils');
 
 function NativeScriptFileStore(storagePath, options) {
     this.options = options;
     this.fs = require('file-system');
     this.dataDirectoryPath = this.fs.knownFolders.documents().path;
-    this.filesDirectoryPath = this.fs.path.join(this.dataDirectoryPath, storagePath);
+    this.filesDirectoryPath = storagePath;
 }
 
 NativeScriptFileStore.prototype = {
@@ -24426,13 +22358,10 @@ NativeScriptFileStore.prototype = {
         }
     },
 
-    removeFilesDirectory: function () {
-        var self = this;
-
-        return self.getFilesDirectory()
-            .then(function (filesDirectory) {
-                return filesDirectory.remove();
-            });
+    removeFilesDirectory: function (directoryEntry) {
+        var filesDirectoryPath = this.fs.path.join(directoryEntry.path, this.filesDirectoryPath);
+        var filesDirectory = this.fs.Folder.fromPath(filesDirectoryPath);
+        return filesDirectory.remove();
     },
 
     removeFile: function (fileEntry) {
@@ -24450,22 +22379,11 @@ NativeScriptFileStore.prototype = {
     getFile: function (path) {
         var self = this;
         return new rsvp.Promise(function (resolve, reject) {
-            self.resolveDataDirectory()
-                .then(function (directoryEntry) {
-                    var fullFilePath = self.fs.path.join(directoryEntry.path, path);
-                    var file = self.fs.File.fromPath(fullFilePath);
-                    resolve(file);
-                })
-                .catch(reject);
-        });
-    },
-
-    getFilesDirectory: function () {
-        var self = this;
-
-        return new rsvp.Promise(function (resolve) {
-            var filesDirectory = self.fs.Folder.fromPath(self.filesDirectoryPath);
-            resolve(filesDirectory);
+            self.resolveDataDirectory(function (directoryEntry) {
+                var fullFilePath = self.fs.path.join(directoryEntry.path, path);
+                var file = self.fs.File.fromPath(fullFilePath);
+                resolve(file);
+            }, reject);
         });
     },
 
@@ -24482,13 +22400,11 @@ NativeScriptFileStore.prototype = {
         var self = this;
 
         return new rsvp.Promise(function (resolve, reject) {
-            self.resolveDataDirectory()
-                .then(function (directoryEntry) {
-                    var fileDirectoryPath = self.fs.path.join(directoryEntry.path, self.filesDirectoryPath);
-                    self.fs.Folder.fromPath(fileDirectoryPath);
-                    resolve();
-                })
-                .catch(reject);
+            self.resolveDataDirectory(function (directoryEntry) {
+                var fileDirectoryPath = self.fs.path.join(directoryEntry.path, self.filesDirectoryPath);
+                self.fs.Folder.fromPath(fileDirectoryPath);
+                resolve();
+            });
         });
     },
 
@@ -24526,48 +22442,30 @@ NativeScriptFileStore.prototype = {
 };
 
 module.exports = NativeScriptFileStore;
-},{"../common":58,"../utils":100,"file-system":"file-system"}],96:[function(require,module,exports){
+},{"../common":53,"file-system":"file-system"}],83:[function(require,module,exports){
 'use strict';
 
 var EverliveError = require('../EverliveError').EverliveError;
 var common = require('../common');
 var rsvp = common.rsvp;
-var _ = common._;
 var utils = require('../utils');
 var platform = require('../everlive.platform');
 var path = require('path');
-
-var deviceReadyPromise = function () {
-    return new rsvp.Promise(function (resolve) {
-        document.addEventListener('deviceready', resolve);
-    });
-};
 
 function WebFileStore(storagePath, options) {
     this.options = options;
 
     var filesDirectoryPath;
-
     if (platform.isWindowsPhone) {
-        //windows phone does not handle leading or trailing slashes very well :(
-        filesDirectoryPath = storagePath.replace(new RegExp('/', 'g'), '');
+        filesDirectoryPath = '/' + storagePath;
     } else {
-        if (storagePath.lastIndexOf('/') === -1) {
-            filesDirectoryPath = storagePath + '/';
-        }
+        filesDirectoryPath = storagePath + '/';
     }
 
-    filesDirectoryPath = filesDirectoryPath || storagePath;
-
-    var self = this;
-
-    deviceReadyPromise()
-        .then(function () {
-            self.filesDirectoryPath = filesDirectoryPath;
-            self._requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
-            self._resolveLocalFileSystemURL = window.resolveLocalFileSystemURL || window.webkitResolveLocalFileSystemURL;
-            self._PERSISTENT_FILE_SYSTEM = window.LocalFileSystem ? window.LocalFileSystem.PERSISTENT : window.PERSISTENT;
-        });
+    this.filesDirectoryPath = filesDirectoryPath;
+    this._requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
+    this._resolveLocalFileSystemURL = window.resolveLocalFileSystemURL || window.webkitResolveLocalFileSystemURL;
+    this._PERSISTENT_FILE_SYSTEM = window.LocalFileSystem ? window.LocalFileSystem.PERSISTENT : window.PERSISTENT;
 }
 
 WebFileStore.prototype = {
@@ -24594,36 +22492,32 @@ WebFileStore.prototype = {
 
         return function getDataDirectory() {
             var self = this;
+            var requestFileSystem = function (bytes, success, error) {
+                self._requestFileSystem.call(window, self._PERSISTENT_FILE_SYSTEM, bytes, function (fileSystem) {
+                    fileSystemRoot = fileSystem.root;
+                    fileSystemRoot.nativeURL = fileSystemRoot.nativeURL || fileSystemRoot.toURL();
+                    success(fileSystemRoot);
+                }, error);
+            };
 
-            return deviceReadyPromise()
-                .then(function () {
-                    var requestFileSystem = function (bytes, success, error) {
-                        self._requestFileSystem.call(window, self._PERSISTENT_FILE_SYSTEM, bytes, function (fileSystem) {
-                            fileSystemRoot = fileSystem.root;
-                            fileSystemRoot.nativeURL = fileSystemRoot.nativeURL || fileSystemRoot.toURL();
-                            success(fileSystemRoot);
-                        }, error);
-                    };
+            return new rsvp.Promise(function (resolve, reject) {
+                if (fileSystemRoot) {
+                    return resolve(fileSystemRoot);
+                }
 
-                    return new rsvp.Promise(function (resolve, reject) {
-                        if (fileSystemRoot) {
-                            return resolve(fileSystemRoot);
-                        }
+                if (platform.isDesktop) {
+                    if (navigator && !navigator.webkitPersistentStorage) {
+                        return reject(new EverliveError('FileSystemStorage can be used only with browsers supporting it. Consider using localStorage.'))
+                    }
 
-                        if (platform.isDesktop) {
-                            if (navigator && !navigator.webkitPersistentStorage) {
-                                return reject(new EverliveError('FileSystemStorage can be used only with browsers supporting it. Consider using localStorage.'))
-                            }
-
-                            navigator.webkitPersistentStorage.requestQuota(self.options.storage.requestedQuota, function (grantedBytes) {
-                                requestFileSystem(grantedBytes, resolve, reject);
-                            }, reject);
-                        } else {
-                            requestFileSystem(0, resolve, reject);
-                        }
-                    });
-                });
-        };
+                    navigator.webkitPersistentStorage.requestQuota(self.options.storage.requestedQuota, function (grantedBytes) {
+                        requestFileSystem(grantedBytes, resolve, reject);
+                    }, reject);
+                } else {
+                    requestFileSystem(0, resolve, reject);
+                }
+            });
+        }
     }()),
 
     getFilesDirectory: function getFilesDirectory() {
@@ -24827,33 +22721,17 @@ WebFileStore.prototype = {
 };
 
 module.exports = WebFileStore;
-},{"../EverliveError":47,"../common":58,"../everlive.platform":61,"../utils":100,"path":3}],97:[function(require,module,exports){
+},{"../EverliveError":44,"../common":53,"../everlive.platform":56,"../utils":87,"path":4}],84:[function(require,module,exports){
 var buildPromise = require('../utils').buildPromise;
-var constants = require('../constants');
-var idField = constants.idField;
 var DataQuery = require('../query/DataQuery');
 var RequestOptionsBuilder = require('../query/RequestOptionsBuilder');
 var rsvp = require('../common').rsvp;
 var Request = require('../Request');
+var idField = require('../constants').idField;
 var Everlive = require('../Everlive');
 var EverliveError = require('../EverliveError').EverliveError;
 var EverliveErrors = require('../EverliveError').EverliveErrors;
-var EventQuery = require('../query/EventQuery');
-var everlivePlatform = require('../everlive.platform').platform;
 var _ = require('../common')._;
-var utils = require('../utils');
-
-var beforeExecuteAllowedOperations = [
-    constants.DataQueryOperations.Count,
-    constants.DataQueryOperations.Read,
-    constants.DataQueryOperations.Create,
-    constants.DataQueryOperations.Update,
-    constants.DataQueryOperations.UpdateById,
-    constants.DataQueryOperations.Delete,
-    constants.DataQueryOperations.DeleteById,
-    constants.DataQueryOperations.ReadById,
-    constants.DataQueryOperations.RawUpdate
-];
 
 module.exports = (function () {
     function mergeResultData(data, success) {
@@ -24864,7 +22742,8 @@ module.exports = (function () {
                 _.each(data, function (item, index) {
                     _.extend(item, attrs[index]);
                 });
-            } else {
+            }
+            else {
                 _.extend(data, attrs);
             }
 
@@ -24895,6 +22774,7 @@ module.exports = (function () {
         this.everlive = everlive;
     }
 
+
     Data.prototype = {
         _isOnline: function () {
             return this.offlineStorage ? this.offlineStorage.isOnline() : true;
@@ -24918,23 +22798,23 @@ module.exports = (function () {
             var autoSyncEnabled = this.offlineStorage && this.offlineStorage.setup.autoSync;
             if (autoSyncEnabled) {
                 switch (query.operation) {
-                    case DataQuery.operations.Read:
-                    case DataQuery.operations.ReadById:
+                    case DataQuery.operations.read:
+                    case DataQuery.operations.readById:
                         var syncReadQuery = new DataQuery(_.defaults({
                             data: requestResponse.result,
                             isSync: true,
-                            operation: DataQuery.operations.Create
+                            operation: DataQuery.operations.create
                         }, query));
                         return this.offlineStorage.processQuery(syncReadQuery);
-                    case DataQuery.operations.Create:
+                    case DataQuery.operations.create:
                         var createData = this._getOfflineCreateData(query, requestResponse);
                         var createQuery = new DataQuery(_.defaults({
                             data: createData,
                             isSync: true
                         }, query));
                         return this.offlineStorage.processQuery(createQuery);
-                    case DataQuery.operations.Update:
-                    case DataQuery.operations.RawUpdate:
+                    case DataQuery.operations.update:
+                    case DataQuery.operations.rawUpdate:
                         query.isSync = true;
                         query.ModifiedAt = requestResponse.ModifiedAt;
                         return this.offlineStorage.processQuery(query);
@@ -24960,56 +22840,19 @@ module.exports = (function () {
         },
 
         /**
-         * Modifies whether the query should be invoked on the offline storage.
          * @memberOf Data.prototype
-         * @method useOffline
-         * @name useOffline
-         * @param {boolean} [useOffline]
-         * @returns {Data} Returns the same instance of the Data object.
-         */
+         * @method
+         * Modifies whether the query should be invoked on the offline storage.
+         * Default is true.
+         * Only valid when offlineStorage is enabled.
+         * @param workOffline
+         * @returns {Data}
+         * */
         useOffline: function (useOffline) {
             if (arguments.length !== 1) {
                 throw new Error('A single value is expected in useOffline() query modifier');
             }
             return this._setOption('useOffline', useOffline);
-        },
-
-        /**
-         * Does not use the cache when retrieving the data.
-         * Only valid when caching is enabled.
-         * @memberOf Data.prototype
-         * @method ignoreCache
-         * @name ignoreCache
-         * @returns {Data}
-         * */
-        ignoreCache: function () {
-            return this._setOption('ignoreCache', true);
-        },
-
-        /**
-         * Forces the request to get the data from the cache even if the data is already expired.
-         * Only valid when caching is enabled.
-         * @memberOf Data.prototype
-         * @method forceCache
-         * @name forceCache
-         * @returns {Data}
-         * */
-        forceCache: function () {
-            return this._setOption('forceCache', true);
-        },
-
-        /**
-         * Sets cache expiration specifically for the current query.
-         * Only valid when caching is enabled.
-         * @memberOf Data.prototype
-         * @method maxAge
-         * @name maxAge
-         * @param maxAgeInMinutes
-         * @returns {Data}
-         * */
-        maxAge: function (maxAgeInMinutes) {
-            var maxAge = maxAgeInMinutes * 1000 * 60;
-            return this._setOption('maxAge', maxAge);
         },
 
         isSync: function (isSync) {
@@ -25020,11 +22863,11 @@ module.exports = (function () {
         },
 
         /**
-         * Modifies whether the query should try to authenticate if the security token has expired.
-         * Default is false.
-         * Only valid when the authentication module has an onAuthenticationRequired function.
          * @memberOf Data.prototype
-         * @method skipAuth
+         * @method
+         * Modifies whether the query should invoke the {{@link Authentication.prototype.hasAuthenticationRequirement}}.
+         * Default is false.
+         * Only valid when authentication module has an onAuthenticationRequired function .
          * @param skipAuth
          * @returns {Data}
          * */
@@ -25040,7 +22883,7 @@ module.exports = (function () {
          * Default is true.
          * Only valid when offlineStorage is enabled.
          * @memberOf Data.prototype
-         * @method applyOffline
+         * @method
          * @param applyOffline
          * @returns {Data}
          * */
@@ -25052,9 +22895,9 @@ module.exports = (function () {
         },
 
         /**
-         * Sets additional non-standard HTTP headers in the current data request. See [List of Request Parameters](http://docs.telerik.com/platform/backend-services/rest/apireference/RESTfulAPI/custom_headers) for more information.
+         * Sets additional non-standard HTTP headers in the current data request. See [List of Non-Standard HTTP Headers]{{% slug rest-api-headers}} for more information.
          * @memberOf Data.prototype
-         * @method withHeaders
+         * @method
          * @param {object} headers Additional headers to be sent with the data request.
          * @returns {Data}
          */
@@ -25064,8 +22907,8 @@ module.exports = (function () {
         /**
          * Sets an expand expression to be used in the data request. This allows you to retrieve complex data sets using a single query based on relations between data types.
          * @memberOf Data.prototype
-         * @method expand
-         * @param {object} expandExpression An [expand expression](http://docs.telerik.com/platform/backend-services/rest/data/relations/relations-defining) definition.
+         * @method
+         * @param {object} expandExpression An [expand expression]({% slug features-data-relations-defining-expand %}) definition.
          * @returns {Data}
          */
         expand: function (expandExpression) {
@@ -25075,93 +22918,22 @@ module.exports = (function () {
             return this.withHeaders(expandHeader);
         },
 
-        _applyQueryOffline: function (query) {
-            var self = this;
-
-            if (!query.applyOffline) {
-                query.onError.call(this, new EverliveError('The applyOffline must be false when working offline.'));
-            } else {
-                self.offlineStorage.processQuery(query)
-                    .then(function () {
-                        query.onSuccess.apply(this, arguments);
-                    }, function (err) {
-                        if (!err.code) {
-                            err = new EverliveError(err.message, EverliveErrors.generalDatabaseError.code);
-                        }
-                        query.onError.call(this, err);
-                    });
-            }
-        },
-
-        _sendRequest: function (query, online) {
-            var self = this;
-
-            var originalSuccess = query.onSuccess;
-            query.onSuccess = function () {
-                var args = arguments;
-                var data = args[0];
-
-                if (query.applyOffline) {
-                    return self._applyOffline(query, data)
-                        .then(function () {
-                            originalSuccess.apply(this, args);
-                        }, function (err) {
-                            if (online && err.code === EverliveErrors.operationNotSupportedOffline.code) {
-                                originalSuccess.apply(this, args);
-                            } else {
-                                query.onError.apply(this, arguments);
-                            }
-                        });
-                } else {
-                    return originalSuccess.apply(this, args);
-                }
-            };
-
-            var getRequestOptionsFromQuery = RequestOptionsBuilder[query.operation];
-            var requestOptions = getRequestOptionsFromQuery(query);
-            this._setAdditionalHeaders(query, requestOptions);
-            var request = new Request(this.setup, requestOptions);
-            request.send();
-        },
-
-        _applyQueryOnline: function (query) {
-            if (query.useCache) {
-                this.everlive.cache._cacheDataQuery(query);
-            } else {
-                this._sendRequest(query, true);
-            }
-        },
-
-        _setAdditionalHeaders: function (query, requestOptions) {
-            if (query.isSync) {
-                requestOptions.headers[constants.Headers.sync] = true;
-            }
-
-            var sdkHeaderValue = {
-                sdk: 'js',
-                platform: everlivePlatform
-            };
-
-            requestOptions.headers[constants.Headers.sdk] = JSON.stringify(sdkHeaderValue);
-        },
-
+        /**
+         * Processes a query with all of its options. Applies the operation online/offline
+         * @param {DataQuery} query The query to process
+         * @private
+         * @param {DataQuery} query
+         * @returns {Promise}
+         */
         processDataQuery: function (query) {
             var self = this;
 
             var offlineStorageEnabled = this.everlive._isOfflineStorageEnabled();
             query.useOffline = offlineStorageEnabled ? !this.everlive.isOnline() : false;
+            query.applyOffline = offlineStorageEnabled;
 
             if (this.options) {
                 query = _.defaults(this.options, query);
-            }
-            var isCachingEnabled = (this.everlive.setup.caching === true || (this.everlive.setup.caching && this.everlive.setup.caching.enabled));
-            var isSupportedInOffline = utils.isQuerySupportedOffline(query);
-
-            query.useCache = isCachingEnabled && !query.isSync && isSupportedInOffline;
-            query.applyOffline = query.applyOffline !== undefined ? query.applyOffline : offlineStorageEnabled || query.useCache;
-
-            if (!query.useCache && query.forceCache) {
-                return query.onError.call(this, new EverliveError(EverliveErrors.cannotForceCacheWhenDisabled));
             }
 
             this.options = null;
@@ -25171,13 +22943,6 @@ module.exports = (function () {
                         var whenAuthenticatedPromise = self.everlive.authentication._ensureAuthentication();
                         if (!query.noRetry) {
                             whenAuthenticatedPromise.then(function () {
-                                if (query.headers && query.headers.authorization) {
-                                    //at this stage if a token is used for authentication it is already invalidated
-                                    //we need to set the new one to the query
-                                    var authHeader = utils.buildAuthHeader(self.everlive.setup);
-                                    _.extend(query.headers, authHeader);
-                                }
-
                                 return self.processDataQuery(query);
                             });
                         }
@@ -25194,28 +22959,46 @@ module.exports = (function () {
                             return self.processDataQuery(query);
                         });
                     }
-
-                    return whenAuthenticatedPromise;
+                    return whenAuthenticatedPromise
                 }
-            }
-
-
-            if (_.contains(beforeExecuteAllowedOperations, query.operation)) {
-                var eventQuery = EventQuery.fromDataQuery(query);
-                this.everlive._emitter.emit(constants.Events.BeforeExecute, eventQuery);
-                if (eventQuery.isCancelled()) {
-                    return;
-                }
-
-                query.applyEventQuery(eventQuery);
             }
 
             if ((!query.isSync && this.offlineStorage && this.offlineStorage.isSynchronizing())) {
-                query.onError.call(this, new EverliveError(EverliveErrors.syncInProgress));
-            } else if (query.useOffline) {
-                this._applyQueryOffline(query);
+                query.onError.call(this, EverliveErrors.syncInProgress);
+            } else if (!query.useOffline) {
+                var originalSuccess = query.onSuccess;
+                query.onSuccess = function () {
+                    var args = arguments;
+                    var data = args[0];
+                    if (query.applyOffline) {
+                        return self._applyOffline(query, data)
+                            .then(function () {
+                                originalSuccess.apply(this, args);
+                            }, function () {
+                                query.onError.apply(this, arguments);
+                            });
+                    } else {
+                        return originalSuccess.apply(this, args);
+                    }
+                };
+
+                var getRequestOptionsFromQuery = RequestOptionsBuilder[query.operation];
+                var requestOptions = getRequestOptionsFromQuery(query);
+                var request = new Request(this.setup, requestOptions);
+                request.send();
             } else {
-                this._applyQueryOnline(query);
+                if (!query.applyOffline) {
+                    return query.onError.call(this, new EverliveError('The applyOffline must be false when working offline.'));
+                }
+
+                self.offlineStorage.processQuery(query).then(function () {
+                    query.onSuccess.apply(this, arguments);
+                }, function (err) {
+                    if (!err.code) {
+                        err = new EverliveError(err.message, EverliveErrors.generalDatabaseError.code);
+                    }
+                    query.onError.call(this, err);
+                });
             }
         },
         // TODO implement options: { requestSettings: { executeServerCode: false } }. power fields queries could be added to that options argument
@@ -25224,7 +23007,7 @@ module.exports = (function () {
          * @memberOf Data.prototype
          * @method get
          * @name get
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @returns {Promise} The promise for the request.
          */
         /**
@@ -25232,7 +23015,7 @@ module.exports = (function () {
          * @memberOf Data.prototype
          * @method get
          * @name get
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @param {Function} [success] A success callback.
          * @param {Function} [error] An error callback.
          */
@@ -25241,7 +23024,7 @@ module.exports = (function () {
 
             return buildPromise(function (successCb, errorCb) {
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.Read,
+                    operation: DataQuery.operations.read,
                     collectionName: self.collectionName,
                     filter: filter,
                     onSuccess: successCb,
@@ -25276,7 +23059,7 @@ module.exports = (function () {
 
             return buildPromise(function (successCb, errorCb) {
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.ReadById,
+                    operation: DataQuery.operations.readById,
                     collectionName: self.collectionName,
                     parse: Request.parsers.single,
                     additionalOptions: {
@@ -25296,7 +23079,7 @@ module.exports = (function () {
          * @memberOf Data.prototype
          * @method count
          * @name count
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @returns {Promise} The promise for the request.
          */
         /**
@@ -25304,7 +23087,7 @@ module.exports = (function () {
          * @memberOf Data.prototype
          * @method count
          * @name count
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @param {Function} [success] A success callback.
          * @param {Function} [error] An error callback.
          */
@@ -25313,7 +23096,7 @@ module.exports = (function () {
 
             return buildPromise(function (sucessCb, errorCb) {
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.Count,
+                    operation: DataQuery.operations.count,
                     collectionName: self.collectionName,
                     filter: filter,
                     parse: Request.parsers.single,
@@ -25346,7 +23129,7 @@ module.exports = (function () {
 
             return buildPromise(function (success, error) {
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.Create,
+                    operation: DataQuery.operations.create,
                     collectionName: self.collectionName,
                     data: data,
                     parse: Request.parsers.single,
@@ -25364,7 +23147,7 @@ module.exports = (function () {
          * @method rawUpdate
          * @name rawUpdate
          * @param {object} updateObject Update object that contains the new values.
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @returns {Promise} The promise for the request.
          */
         /**
@@ -25373,7 +23156,7 @@ module.exports = (function () {
          * @method rawUpdate
          * @name rawUpdate
          * @param {object} updateObject Update object that contains the new values.
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @param {Function} [success] A success callback.
          * @param {Function} [error] An error callback.
          */
@@ -25401,7 +23184,7 @@ module.exports = (function () {
 
             return buildPromise(function (success, error) {
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.RawUpdate,
+                    operation: DataQuery.operations.rawUpdate,
                     collectionName: self.collectionName,
                     filter: filter,
                     data: attrs,
@@ -25423,7 +23206,7 @@ module.exports = (function () {
                 var onSuccess = single ? mergeUpdateResultData(attrs, success) : success;
 
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.Update,
+                    operation: DataQuery.operations.update,
                     collectionName: self.collectionName,
                     parse: Request.parsers.update,
                     filter: filter,
@@ -25456,24 +23239,7 @@ module.exports = (function () {
          * @param {Function} [error] An error callback.
          */
         updateSingle: function (model, success, error) {
-            var err = this._validateIdForModel(model);
-            if (err) {
-                return buildPromise(function (success, error) {
-                    return error(err);
-                }, success, error);
-            }
             return this._update(model, null, true, false, success, error);
-        },
-
-        _validateIdForModel: function (model, isDestroy) {
-            // validation for destroySingle('id-as-string') scenario
-            if ((typeof model === 'string' || typeof model === 'number') && isDestroy) {
-                return;
-            }
-
-            if (!model || model.Id === undefined || model.Id === null) {
-                return new EverliveError(EverliveErrors.invalidId)
-            }
         },
 
         /**
@@ -25482,7 +23248,7 @@ module.exports = (function () {
          * @method update
          * @name update
          * @param {object} updateObject The update object.
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @returns {Promise} The promise for the request.
          */
         /**
@@ -25491,7 +23257,7 @@ module.exports = (function () {
          * @method update
          * @name update
          * @param {object} model The update object.
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @param {Function} [success] A success callback.
          * @param {Function} [error] An error callback.
          */
@@ -25502,17 +23268,14 @@ module.exports = (function () {
             var self = this;
 
             return buildPromise(function (success, error) {
-                // for support of destroySingle using string id
-                var idField = (attrs && typeof attrs === 'object') ? attrs[constants.idField] : attrs;
-
                 var dataQuery = new DataQuery({
-                    operation: single ? DataQuery.operations.DeleteById : DataQuery.operations.Delete,
+                    operation: single ? DataQuery.operations.removeSingle : DataQuery.operations.remove,
                     collectionName: self.collectionName,
                     filter: filter,
                     onSuccess: success,
                     onError: error,
                     additionalOptions: {
-                        id: single ? idField : undefined
+                        id: single ? attrs[idField] : undefined
                     }
                 });
                 return self.processDataQuery(dataQuery);
@@ -25537,13 +23300,6 @@ module.exports = (function () {
          * @param {Function} [error] An error callback.
          */
         destroySingle: function (model, success, error) {
-            var err = this._validateIdForModel(model, true);
-            if (err) {
-                return buildPromise(function (success, error) {
-                    return error(err);
-                }, success, error);
-            }
-
             return this._destroy(model, null, true, success, error);
         },
 
@@ -25552,7 +23308,7 @@ module.exports = (function () {
          * @memberOf Data.prototype
          * @method destroy
          * @name destroy
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @returns {Promise} The promise for the request.
          */
         /**
@@ -25560,7 +23316,7 @@ module.exports = (function () {
          * @memberOf Data.prototype
          * @method destroy
          * @name destroy
-         * @param {object|null} filter A [filter expression](http://docs.telerik.com/platform/backend-services/rest/queries/queries-filtering) definition.
+         * @param {object|null} filter A [filter expression]({% slug rest-api-querying-filtering %}) definition.
          * @param {Function} [success] A success callback.
          * @param {Function} [error] An error callback.
          */
@@ -25574,7 +23330,7 @@ module.exports = (function () {
          * @method setAcl
          * @name setAcl
          * @param {object} acl The acl object.
-         * @param {object} item The item whose ACL will be updated. Note: the ID property of the item will be used to determine which item will be updated.
+         * @param {object} item The item whose ACL will be updated. Note: the ID property of the item will be used to determine which item will be deleted.
          * @returns {Promise} The promise for the request.
          */
         /**
@@ -25583,8 +23339,8 @@ module.exports = (function () {
          * @method setAcl
          * @name setAcl
          * @param {object} acl The acl object.
-         * @param {object} item The item whose ACL will be updated. Note: the ID property of the item will be used to determine which item will be updated.
-         * @param {object} operationParameters An object that accepts operation parameters.
+         * @param {object} item The item whose ACL will be updated. Note: the ID property of the item will be used to determine which item will be deleted.
+         * @param {object} operationParameters An object which accepts operation parameters
          * @param {Function} [success] A success callback.
          * @param {Function} [error] An error callback.
          */
@@ -25612,7 +23368,7 @@ module.exports = (function () {
 
             return buildPromise(function (success, error) {
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.SetAcl,
+                    operation: DataQuery.operations.setAcl,
                     collectionName: self.collectionName,
                     parse: Request.parsers.single,
                     filter: filter,
@@ -25633,7 +23389,7 @@ module.exports = (function () {
          * @method setOwner
          * @name setOwner
          * @param {string} acl The new owner ID.
-         * @param {object} item The item whose owner will be updated. Note: the ID property of the item will be used to determine which item will be updated.
+         * @param {object} item The item whose owner will be updated. Note: the ID property of the item will be used to determine which item will be deleted.
          * @returns {Promise} The promise for the request.
          */
         /**
@@ -25642,8 +23398,8 @@ module.exports = (function () {
          * @method setOwner
          * @name setOwner
          * @param {string} acl The new owner ID.
-         * @param {object} item The item whose owner will be updated. Note: the ID property of the item will be used to determine which item will be updated.
-         * @param {object} operationParameters An object that accepts operation parameters.
+         * @param {object} item The item whose owner will be updated. Note: the ID property of the item will be used to determine which item will be deleted.
+         * @param {object} operationParameters An object which accepts operation parameters
          * @param {Function} [operationParameters.success] A success callback.
          * @param {Function} [operationParameters.error] An error callback.
          * @param {Boolean} [operationParameters.useOffline] Whether to invoke the operation on the offline storage. Default is based on the current mode of the Everlive instance.
@@ -25673,7 +23429,7 @@ module.exports = (function () {
 
             return buildPromise(function (success, error) {
                 var dataQuery = new DataQuery({
-                    operation: DataQuery.operations.SetOwner,
+                    operation: DataQuery.operations.setOwner,
                     collectionName: self.collectionName,
                     filter: filter,
                     data: {
@@ -25727,7 +23483,7 @@ module.exports = (function () {
         /**
          * Checks if the specified data item is new or not.
          * @memberOf Data.prototype
-         * @method isNew
+         * @method
          * @param model Item to check.
          * @returns {boolean}
          */
@@ -25739,7 +23495,7 @@ module.exports = (function () {
     return Data;
 }());
 
-},{"../Everlive":46,"../EverliveError":47,"../Request":52,"../common":58,"../constants":59,"../everlive.platform":61,"../query/DataQuery":85,"../query/EventQuery":86,"../query/RequestOptionsBuilder":89,"../utils":100}],98:[function(require,module,exports){
+},{"../Everlive":43,"../EverliveError":44,"../Request":49,"../common":53,"../constants":54,"../query/DataQuery":73,"../query/RequestOptionsBuilder":76,"../utils":87}],85:[function(require,module,exports){
 /**
  * @class Files
  * @protected
@@ -25805,7 +23561,7 @@ module.exports.addFilesFunctions = function addFilesFunctions(ns) {
 
         return buildPromise(function (success, error) {
             var dataQuery = new DataQuery({
-                operation: DataQuery.operations.FilesUpdateContent,
+                operation: DataQuery.operations.filesUpdateContent,
                 // the passed file content is base64 encoded
                 data: file,
                 collectionName: self.collectionName,
@@ -25826,22 +23582,15 @@ module.exports.addFilesFunctions = function addFilesFunctions(ns) {
      * @memberof Files.prototype
      * @method getDownloadUrlById
      * @param {string} fileId File ID.
+     * @param operationParameters
      * @returns {Promise} The promise for the request
-     */
-    /**
-     * Gets the download URL for a file by ID.
-     * @memberof Files.prototype
-     * @method getDownloadUrlById
-     * @param {string} fileId File ID.
-     * @param {Function} [success] A success callback.
-     * @param {Function} [error] An error callback.
      */
     ns.getDownloadUrlById = function (fileId, success, error) {
         var self = this;
 
         return buildPromise(function (success, error) {
             var dataQuery = new DataQuery({
-                operation: DataQuery.operations.FilesGetDownloadUrlById,
+                operation: DataQuery.operations.filesGetDownloadUrlById,
                 collectionName: self.collectionName,
                 additionalOptions: {
                     id: fileId
@@ -25857,97 +23606,8 @@ module.exports.addFilesFunctions = function addFilesFunctions(ns) {
             return self.processDataQuery(dataQuery);
         }, success, error);
     };
-
-    /**
-     * Downloads a file to the device's file system. Wraps the Apache Cordova "download()" [FileTransfer](http://cordova.apache.org/docs/en/2.7.0/cordova_file_file.md.html#FileTransfer) method. Note that the signatures of these methods differ.
-     * @memberof Files.prototype
-     * @method download
-     * @param {string} fileToDownload A Backend Services File ID.
-     * @param {string} pathOnDevice An Apache Cordova FileSystem URL representing the local path on the device where the downloaded file will be saved. Maps to the "target" FileTransfer plugin parameter.
-     * @param {object} [options] Additional request options. Maps to the "options" FileTransfer plugin parameter.
-     * @param {object} [options.headers] A JSON object containing headers to send along with the request.
-     * @param {boolean} [trustAllHosts=false] Whether to accept all security certificates including self-signed certificates. Maps to the "trustAllHosts" FileTransfer plugin parameter.
-     * @returns {Promise} The promise for the request.
-     */
-    /**
-     * Downloads a file to the device's file system. Wraps the Apache Cordova "download()" [FileTransfer](http://cordova.apache.org/docs/en/2.7.0/cordova_file_file.md.html#FileTransfer) method. Note that the signatures of these methods differ.
-     * @memberof Files.prototype
-     * @method download
-     * @param {string} fileToDownload A Backend Services File ID.
-     * @param {string} pathOnDevice An Apache Cordova FileSystem URL representing the local path on the device where the downloaded file will be saved. Maps to the "target" FileTransfer plugin parameter.
-     * @param {object} [options] Additional request options. Maps to the "options" FileTransfer plugin parameter.
-     * @param {object} [options.headers] A JSON object containing headers to send along with the request.
-     * @param {boolean} [trustAllHosts=false] Whether to accept all security certificates including self-signed certificates. Maps to the "trustAllHosts" FileTransfer plugin parameter.
-     * @param {Function} [success] A success callback that is passed an Apache Cordova [FileEntry](https://cordova.apache.org/docs/en/3.3.0/cordova_file_file.md.html#FileEntry) object. Maps to the "successCallback" FileTransfer plugin parameter.
-     * @param {Function} [error] An error callback that is passed an Apache Cordova [FileTransferError](https://github.com/apache/cordova-plugin-file-transfer#filetransfererror) object. Maps to the "errorCallback" FileTransfer plugin parameter.
-     */
-    ns.download = function (url, localPath, options, trustAllHosts, success, error) {
-        var self = this;
-
-        return buildPromise(function (success, error) {
-            if (!trustAllHosts) {
-                trustAllHosts = false;
-            }
-
-            var headers = options && options.headers ? options.headers : {};
-
-            var fileTransfer = new FileTransfer();
-            self.withHeaders(headers)
-                .getById(url)
-                .then(function (res) {
-                    var file = res.result;
-                    url = file.Uri;
-                    fileTransfer.download(url, localPath, success, error, trustAllHosts, options);
-                }, error);
-        }, success, error);
-    };
-
-    /**
-     * Uploads a file from the device's file system to Backend Services. Wraps the Apache Cordova "upload()" [FileTransfer](http://cordova.apache.org/docs/en/2.7.0/cordova_file_file.md.html#FileTransfer) method. Note that the signatures of these methods differ.
-     * @memberof Files.prototype
-     * @method upload
-     * @param {string} fileToUpload An Apache Cordova FileSystem URL representing the full path to the file on the device.
-     * @param {object} [options] Additional request options. Maps to the "options" FileTransfer plugin parameter.
-     * @param {string} [options.fileKey] The name of the form element. Defaults to 'file' in the FileTransfer plugin parameter.
-     * @param {string} [options.fileName] The file name to use when uploading the file. Defaults to 'image.jpg' in the FileTransfer plugin.
-     * @param {string} [options.httpMethod] The HTTP method to use, either POST or PUT. Defaults to 'POST' in the FileTransfer plugin parameter.
-     * @param {string} [options.mimeType] The mime type of the uploaded data. Defaults to 'image/jpeg' in the FileTransfer plugin parameter.
-     * @param {object} [options.params] A set of optional key/value pairs to pass in the HTTP request.
-     * @param {boolean} [options.chunkedMode] Whether to upload the data in chunked streaming mode. Defaults to 'true' in the FileTransfer plugin parameter.
-     * @param {object} [options.headers] A JSON object for the headers to send along with the request.
-     * @param {boolean} [trustAllHosts=false] Whether to accept all security certificates including self-signed certificates. Maps to the "trustAllHosts" FileTransfer plugin parameter.
-     * @returns {Promise} The promise for the request.
-     */
-    /**
-     * Uploads a file from the device's file system to Backend Services. Wraps the Apache Cordova "upload()" [FileTransfer](http://cordova.apache.org/docs/en/2.7.0/cordova_file_file.md.html#FileTransfer) method. Note that the signatures of these methods differ.
-     * @memberof Files.prototype
-     * @method upload
-     * @param {string} fileToUpload An Apache Cordova FileSystem URL representing the full path to the file on the device.
-     * @param {object} [options] Additional request options. Maps to the "options" FileTransfer plugin parameter.
-     * @param {string} [options.fileKey] The name of the form element. Defaults to 'file' in the FileTransfer plugin parameter.
-     * @param {string} [options.fileName] The file name to use when uploading the file. Defaults to 'image.jpg' in the FileTransfer plugin parameter.
-     * @param {string} [options.httpMethod] The HTTP method to use, either POST or PUT. Defaults to 'POST' in the FileTransfer plugin parameter.
-     * @param {string} [options.mimeType] The mime type of the uploaded data. Defaults to 'image/jpeg' in the FileTransfer plugin parameter.
-     * @param {object} [options.params] A set of optional key/value pairs to pass in the HTTP request.
-     * @param {boolean} [options.chunkedMode] Whether to upload the data in chunked streaming mode. Defaults to 'true' in the FileTransfer plugin parameter.
-     * @param {object} [options.headers] A JSON object for the headers to send along with the request.
-     * @param {boolean} [trustAllHosts=false] Whether to accept all security certificates including self-signed certificates. Maps to the "trustAllHosts" FileTransfer plugin parameter.
-     * @param {Function} [success] A success callback that is passed an Apache Cordova [FileUploadResult](https://github.com/apache/cordova-plugin-file-transfer#fileuploadresult) object. Maps to the "successCallback" FileTransfer plugin parameter.
-     * @param {Function} [error] An error callback that is passed an Apache Cordova [FileTransferError](https://github.com/apache/cordova-plugin-file-transfer#filetransfererror) object. Maps to the "errorCallback" FileTransfer plugin parameter.
-     */
-    ns.upload = function (localPath, options, trustAllHosts, success, error) {
-        var url = this.getUploadUrl();
-        return buildPromise(function (success, error) {
-            if (!trustAllHosts) {
-                trustAllHosts = false;
-            }
-            var fileTransfer = new FileTransfer();
-            var uri = encodeURI(url);
-            fileTransfer.upload(localPath, uri, success, error, options, trustAllHosts);
-        }, success, error);
-    }
 };
-},{"../Request":52,"../query/DataQuery":85,"../utils":100}],99:[function(require,module,exports){
+},{"../Request":49,"../query/DataQuery":73,"../utils":87}],86:[function(require,module,exports){
 /**
  * @class Users
  * @extends Data
@@ -25998,14 +23658,14 @@ module.exports.addUsersFunctions = function addUsersFunctions(ns, everlive) {
     };
 
     /**
-     * Gets information about the user that is currently authenticated to the {{site.bs}} JavaScript SDK. The success function is called with {@link Users.ResultTypes.currentUserResult}.
+     * Gets information about the user that is currently authenticated to the {{site.bs}} JavaScript SDK. The success function is called with {@link Users.ResultTypes.curentUserResult}.
      * @memberOf Users.prototype
      * @method currentUser
      * @name currentUser
      * @returns {Promise} The promise for the request.
      */
     /**
-     * Gets information about the user that is currently authenticated to the {{site.bs}} JavaScript SDK. The success function is called with {@link Users.ResultTypes.currentUserResult}.
+     * Gets information about the user that is currently authenticated to the {{site.bs}} JavaScript SDK. The success function is called with {@link Users.ResultTypes.curentUserResult}.
      * @memberOf Users.prototype
      * @method currentUser
      * @name currentUser
@@ -26033,7 +23693,7 @@ module.exports.addUsersFunctions = function addUsersFunctions(ns, everlive) {
                     } else if (err.code === 601) { // invalid request, i.e. the access token is missing
                         success({result: null});
                     } else if (err.code === 801) {
-                        error(new EverliveError(EverliveErrors.invalidToken));
+                        error(EverliveErrors.invalidToken);
                     } else {
                         error(err);
                     }
@@ -26078,7 +23738,7 @@ module.exports.addUsersFunctions = function addUsersFunctions(ns, everlive) {
             });
 
             var dataQuery = new DataQuery({
-                operation: DataQuery.operations.UserChangePassword,
+                operation: DataQuery.operations.userChangePassword,
                 collectionName: self.collectionName,
                 data: {
                     Username: username,
@@ -26544,92 +24204,33 @@ module.exports.addUsersFunctions = function addUsersFunctions(ns, everlive) {
     };
 
     /**
-     * Sends a password reset email to a specified user.
+     *
+     * Sends a password reset email to the user with the specified email address.
      * @memberOf Users.prototype
      * @method resetPassword
      * @name resetPassword
-     * @param {Object} user The user object, which must container either username or email address.
+     * @param {string} email The user's username.
      * @returns {Promise} The promise for the request.
      */
     /**
-     * Sends a password reset email to a specified user.
+     * Sends a password reset email to the user with the specified email address.
      * @memberOf Users.prototype
      * @method resetPassword
      * @name resetPassword
-     * @param {Object} user The user object, which must container either username or email address.
+     * @param {string} email The user's username.
      * @param {Function} [success] A success callback.
      * @param {Function} [error] An error callback.
      */
-    ns.resetPassword = function (user, success, error) {
+    ns.resetPassword = function (email, success, error) {
         var self = this;
 
         return buildPromise(function (successCb, errorCb) {
             var dataQuery = new DataQuery({
-                operation: DataQuery.operations.UserResetPassword,
+                operation: DataQuery.operations.userResetPassword,
                 collectionName: self.collectionName,
-                data: user,
-                onSuccess: successCb,
-                onError: errorCb
-            });
-
-            return self.processDataQuery(dataQuery);
-        }, success, error);
-    };
-
-    /**
-     * Set a new password for a user using a password reset code.
-     * @memberOf Users.prototype
-     * @method setPassword
-     * @name setPassword
-     * @param {object} setPasswordObject The object, which contains information necessary for changing the user password.
-     * @param {string} setPasswordObject.ResetCode The reset code obtained using a password reset email.
-     * @param {string} setPasswordObject.NewPassword The new password for the user.
-     * @returns {Promise} The promise for the request.
-     */
-    /**
-     * Set a new password for a user using a password reset code.
-     * @memberOf Users.prototype
-     * @method setPassword
-     * @name setPassword
-     * @param {object} setPasswordObject The object, which contains information necessary for changing the user password.
-     * @param {string} setPasswordObject.ResetCode The reset code obtained using a password reset email.
-     * @param {string} setPasswordObject.NewPassword The new password for the user.
-     * @param {Function} [success] A success callback.
-     * @param {Function} [error] An error callback.
-     */
-    /**
-     * Set a new password for a user using a password reset code.
-     * @memberOf Users.prototype
-     * @method setPassword
-     * @name setPassword
-     * @param {object} setPasswordObject The object, which contains information necessary for changing the user password.
-     * @param {number} setPasswordObject.Username The username that the password will be changed.
-     * @param {number} setPasswordObject.SecretQuestionId The id of the secret question.
-     * @param {string} setPasswordObject.SecretAnswer The answer to the secret question.
-     * @param {string} setPasswordObject.NewPassword The new password for the user.
-     * @returns {Promise} The promise for the request.
-     */
-    /**
-     * Set a new password for a user using a password reset code.
-     * @memberOf Users.prototype
-     * @method setPassword
-     * @name setPassword
-     * @param {object} setPasswordObject The object, which contains information necessary for changing the user password.
-     * @param {number} setPasswordObject.Username The username that the password will be changed.
-     * @param {number} setPasswordObject.SecretQuestionId The id of the secret question.
-     * @param {string} setPasswordObject.SecretAnswer The answer to the secret question.
-     * @param {string} setPasswordObject.NewPassword The new password for the user.
-     * @param {Function} [success] A success callback.
-     * @param {Function} [error] An error callback.
-     */
-    ns.setPassword = function (setPasswordObject, success, error) {
-        var self = this;
-
-        return buildPromise(function (successCb, errorCb) {
-            var dataQuery = new DataQuery({
-                operation: DataQuery.operations.UserSetPassword,
-                collectionName: self.collectionName,
-                data: setPasswordObject,
+                data: {
+                    Email: email
+                },
                 onSuccess: successCb,
                 onError: errorCb
             });
@@ -26645,7 +24246,7 @@ module.exports.addUsersFunctions = function addUsersFunctions(ns, everlive) {
                 additionalOptions: {
                     id: userId
                 },
-                operation: DataQuery.operations.UserLinkWithProvider,
+                operation: DataQuery.operations.userLinkWithProvider,
                 collectionName: self.collectionName,
                 data: identity,
                 parse: Request.parsers.single,
@@ -26668,7 +24269,7 @@ module.exports.addUsersFunctions = function addUsersFunctions(ns, everlive) {
                 additionalOptions: {
                     userId: userId
                 },
-                operation: DataQuery.operations.UserUnlinkFromProvider,
+                operation: DataQuery.operations.userUnlinkFromProvider,
                 collectionName: self.collectionName,
                 data: identity,
                 parse: Request.parsers.single,
@@ -26681,7 +24282,7 @@ module.exports.addUsersFunctions = function addUsersFunctions(ns, everlive) {
         }, success, error);
     };
 };
-},{"../EverliveError":47,"../Request":52,"../common":58,"../query/DataQuery":85,"../utils":100}],100:[function(require,module,exports){
+},{"../EverliveError":44,"../Request":49,"../common":53,"../query/DataQuery":73,"../utils":87}],87:[function(require,module,exports){
 var EverliveError = require('./EverliveError').EverliveError;
 var common = require('./common');
 var _ = common._;
@@ -26699,21 +24300,6 @@ utils.guardUnset = function guardUnset(value, name, message) {
     if (typeof value === 'undefined' || value === null) {
         throw new EverliveError(message);
     }
-};
-
-//brings down all keys to the same level (lowerCase)
-utils.normalizeKeys = function normalizeKeys(obj) {
-    var normalizedKeys = {};
-
-    _.each(obj, function (val, key) {
-        var lowerKey = key.toLowerCase();
-
-        if (!normalizedKeys.hasOwnProperty(lowerKey)) {
-            normalizedKeys[lowerKey] = val;
-        }
-    });
-
-    return normalizedKeys;
 };
 
 utils.parseUtilities = {
@@ -26927,7 +24513,7 @@ utils.buildAuthHeader = function buildAuthHeader(setup, options) {
         authHeaderValue = 'masterkey ' + setup.masterKey;
     }
     if (authHeaderValue) {
-        return {authorization: authHeaderValue};
+        return {Authorization: authHeaderValue};
     } else {
         return null;
     }
@@ -26947,8 +24533,8 @@ utils.buildUrl = function (setup) {
         url += setup.scheme + ':';
     }
     url += setup.url;
-    if (setup.appId) {
-        url += setup.appId + '/';
+    if (setup.apiKey) {
+        url += setup.apiKey + '/';
     }
     return url;
 };
@@ -26956,11 +24542,11 @@ utils.buildUrl = function (setup) {
 utils.getDbOperators = function (expression, shallow) {
     var dbOperators = [];
 
-    if (typeof expression === 'string' || typeof expression === 'number') {
+    if (typeof expression === 'string') {
         return dbOperators;
     }
 
-    var modifierKeys = Object.keys(expression || {});
+    var modifierKeys = Object.keys(expression);
     _.each(modifierKeys, function (key) {
         if (key.indexOf('$') === 0) {
             dbOperators.push(key);
@@ -26998,15 +24584,6 @@ utils.getUnsupportedOperators = function (filter) {
 // http://stackoverflow.com/questions/7905929/how-to-test-valid-uuid-guid
 utils.isGuid = function (str) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
-};
-
-utils.isQuerySupportedOffline = function (query) {
-    var queryParams = query.getQueryParameters();
-    var hasExpandExpression = !_.isEmptyObject(queryParams.expand);
-    var unsupportedOperators = utils.getUnsupportedOperators(queryParams.filter);
-    var hasUnsupportedOperators = unsupportedOperators.length !== 0;
-    var isUnsupportedInOffline = hasExpandExpression || hasUnsupportedOperators;
-    return !isUnsupportedInOffline;
 };
 
 // http://stackoverflow.com/questions/16245767/creating-a-blob-from-a-base64-string-in-javascript/16245768#16245768
@@ -27121,10 +24698,10 @@ utils.joinPath = function joinPath() {
 utils.uuid = function () {
     //http://stackoverflow.com/questions/105034/create-guid-uuid-in-javascript
     var d = new Date().getTime();
-    var uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-        var r = (d + Math.random() * 16) % 16 | 0;
-        d = Math.floor(d / 16);
-        return (c == 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    var uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = (d + Math.random()*16)%16 | 0;
+        d = Math.floor(d/16);
+        return (c=='x' ? r : (r&0x3|0x8)).toString(16);
     });
 
     return uuid;
@@ -27134,25 +24711,7 @@ utils.getId = function (obj) {
     return obj.Id || obj._id || obj.id;
 };
 
-utils.lazyRequire = function (moduleName, exportName) {
-    exportName = exportName || moduleName;
-    var obj = {};
-
-    Object.defineProperty(obj, exportName, {
-        get: function () {
-            return require(moduleName);
-        }
-    });
-
-    return obj;
-};
-
-utils._inAppBuilderSimulator = function () {
-    return typeof window !== undefined && window.navigator && window.navigator.simulator;
-};
-
 module.exports = utils;
 
-},{"./Everlive":46,"./EverliveError":47,"./common":58,"./everlive.platform":61,"path":3}]},{},[66])(66)
-});
-//# sourceMappingURL=everlive.map
+},{"./Everlive":43,"./EverliveError":44,"./common":53,"./everlive.platform":56,"path":4}]},{},[61]);
+}())
