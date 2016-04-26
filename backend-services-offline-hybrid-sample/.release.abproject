@@ -5,5 +5,6 @@
       "AUTO_TRACK_KENDO_EVENTS": "True",
       "PRODUCT_ID": "5a3a27d3b197434ebed3c6a7b4484710"
     }
-  }
+  },
+  "CorePlugins": []
 }
